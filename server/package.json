@@ -4,7 +4,11 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "ts-node src/server.ts",
+    "simulate": "ts-node src/main.ts",
+    "cli": "ts-node src/cli.ts",
+    "migrate": "pnpx prisma migrate dev --name init",
+    "generate": "pnpx prisma generate"
   },
   "keywords": [],
   "author": "",
@@ -12,7 +16,17 @@
   "packageManager": "pnpm@10.6.3",
   "devDependencies": {
     "@types/node": "^22.14.0",
+    "prisma": "6.5.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "@prisma/client": "6.5.0",
+    "@types/express": "^5.0.1",
+    "@types/ws": "^8.18.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^5.1.0",
+    "ws": "^8.18.1"
   }
 }
