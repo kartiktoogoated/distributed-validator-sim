@@ -21,3 +21,13 @@ model ValidatorLog {
   status      String
   timestamp   DateTime @default(now())
 }
+
+model User {
+  id          Int       @id @default(autoincrement())
+  email       String    @unique
+  password    String 
+  isVerified  Boolean   @default(false)
+  otp         String?
+  otpExpires  DateTime?
+  createdAt   DateTime  @default(now())
+}

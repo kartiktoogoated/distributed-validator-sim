@@ -1,23 +1,37 @@
-import { info } from "../../utils/logger";
-
-export type Status = "UP" | "DOWN";
+import axios from 'axios';
+import { info } from '../../utils/logger';
+export type Status = 'UP' | 'DOWN'
 
 export class Validator {
   public id: number;
-  // Using a MAP to hold the status for each site
   private statusMap: Map<string, Status> = new Map();
-  // Peers can be injected later; we use dependency injection for better testing
-  public peers: Validator[] = [];
+  public peers: Validator [] = [];
 
   constructor(id: number) {
     this.id = id;
   }
 
-  // Simulate a website check; advanced: can even use generics for diff check types
-  public checkWebsite(site: string): Status {
-    const status: Status = Math.random() < 0.3 ? "DOWN" : "UP";
-    this.statusMap.set(site, status);
-    return status;
+  /**
+   * Performs a real HTTP GET Request.
+   * Returns 'UP' if the site responds w a status code b/w 200 & 399.
+   * Returns 'DOWN' if the site errors out, times out, or returns an unexpected status.
+   * 
+   * @parans site - The URL to check.
+   * @returns Promise resolving to 'UP' or 'DOWN'
+   */
+  public async checkWebsite(site: string): Promise<Status> {
+    try {
+      // Perform a GET request with a 5-second timeout.
+      const response = await axios.get(site, { timeout: 5000});
+      // Consider response status codes 200-399 as UP.
+      const status: Status = (response.status >= 200 && response.status <400) ? 'UP' : 'DOWN';
+      this.statusMap.set(site, status);
+      return status;
+    } catch (error) {
+      // Any error (network err, timeout) is considered as DOWN.
+      this.statusMap.set(site, 'DOWN');
+      return 'DOWN';
+    }
   }
 
   // Gossip your status to a subset of peers
