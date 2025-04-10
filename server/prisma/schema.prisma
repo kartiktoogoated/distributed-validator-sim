@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -13,7 +7,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-
 model ValidatorLog {
   id          Int      @id @default(autoincrement())
   validatorId Int
@@ -22,12 +15,19 @@ model ValidatorLog {
   timestamp   DateTime @default(now())
 }
 
+model PendingUser {
+  id         Int      @id @default(autoincrement())
+  email      String   @unique
+  password   String   // store hashed password
+  otp        String
+  otpExpires DateTime
+  createdAt  DateTime @default(now())
+}
+
 model User {
-  id          Int       @id @default(autoincrement())
-  email       String    @unique
-  password    String 
-  isVerified  Boolean   @default(false)
-  otp         String?
-  otpExpires  DateTime?
-  createdAt   DateTime  @default(now())
+  id         Int       @id @default(autoincrement())
+  email      String    @unique
+  password   String
+  isVerified Boolean   @default(true)
+  createdAt  DateTime  @default(now())
 }
