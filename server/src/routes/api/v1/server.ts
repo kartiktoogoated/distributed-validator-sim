@@ -5,6 +5,8 @@ import http from 'http';
 import { WebSocketServer } from 'ws';
 import { info, error as logError } from '../../../../utils/logger'; 
 import authRouter from './auth'; 
+import dotenv from "dotenv";
+dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;

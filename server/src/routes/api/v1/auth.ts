@@ -1,5 +1,5 @@
-import express, { Router } from 'express';
-import { signup, verifyOtp, signin } from '../../../controllers/authController';
+import  { Router } from 'express';
+import { signup, verifyPendingSignup, signin } from '../../../controllers/authController';
 
 const authRouter = Router();
 
@@ -7,7 +7,7 @@ const authRouter = Router();
 authRouter.post('/signup', signup);
 
 // Route for OTP verification.
-authRouter.post('/verify-otp', verifyOtp);
+authRouter.post('/verify-otp', verifyPendingSignup);
 
 // Route for user sign-in
 authRouter.post('/signin', signin);

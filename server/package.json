@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "@prisma/client": "6.5.0",
+    "@types/nodemailer": "^6.4.17",
     "@types/ws": "^8.18.1",
     "axios": "^1.8.4",
     "bcryptjs": "^3.0.2",
@@ -32,6 +33,7 @@
     "dotenv": "^16.4.7",
     "express": "^5.1.0",
     "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^6.10.0",
     "ws": "^8.18.1"
   }
 }
