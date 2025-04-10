@@ -10,5 +10,10 @@
     "strict": true,
     "esModuleInterop": true
   },
-  "include": ["src", "../api", "api/index.ts"]
+  "include": [
+    "src",
+    "global.d.ts",
+    "../api",
+    "api/index.ts"
+  ]
 }

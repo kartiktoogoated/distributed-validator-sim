@@ -16,7 +16,7 @@ export class Validator {
    * Returns 'UP' if the site responds w a status code b/w 200 & 399.
    * Returns 'DOWN' if the site errors out, times out, or returns an unexpected status.
    * 
-   * @parans site - The URL to check.
+   * @params site - The URL to check.
    * @returns Promise resolving to 'UP' or 'DOWN'
    */
   public async checkWebsite(site: string): Promise<Status> {
