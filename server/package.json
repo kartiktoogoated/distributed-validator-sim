@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "ts-node src/server.ts",
+    "start": "ts-node src/routes/api/v1/server.ts",
     "simulate": "ts-node src/main.ts",
     "cli": "ts-node src/cli.ts",
     "migrate": "pnpx prisma migrate dev --name init",
@@ -15,7 +15,6 @@
   "license": "ISC",
   "packageManager": "pnpm@10.6.3",
   "devDependencies": {
-    "@types/bcrypt": "^5.0.2",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.1",
     "@types/jsonwebtoken": "^9.0.9",
@@ -28,7 +27,7 @@
     "@prisma/client": "6.5.0",
     "@types/ws": "^8.18.1",
     "axios": "^1.8.4",
-    "bcrypt": "^5.1.1",
+    "bcryptjs": "^3.0.2",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^5.1.0",
