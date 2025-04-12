@@ -1,34 +1,77 @@
-// src/core/pinger.ts
 import axios from "axios";
 import { WebSocketServer } from "ws";
 import { info } from "../../utils/logger";
-import { Validator } from "./Validator";
+import { Validator, VoteStatus, Vote } from "./Validator";
+import { timeStamp } from "console";
 
-// The target URL to check.
-const TARGET_URL = "https://awewarad.com";
-// The interval (in ms) between pings (used when running continuously).
-const PING_INTERVAL = 60000; // 60 seconds
-// Timeout for each ping (in ms)
+// Target URL
+const TARGET_URL = "https://youtube.com";
+// Timrout interval between pings
+const PING_INTERVAL = 60000;
 
-const validator = new Validator(1);
+const TOTAL_VALIDATORS = 5;
 
 /**
- * Performs a ping of the target URL using the Validator,
- * broadcasts the result to all connected WS clients, and returns the payload.
+ * Performs website checks using multiple Validator instances, computes weighted consensus,
+ * broadcasts the result via WebSocket, and returns the payload.
+ *
+ * @param wss - The WebSocketServer instance.
+ * @returns An object with the target URL, consensus result, individual votes, and a timestamp.
  */
-export async function pingAndBroadcast(wss: WebSocketServer): Promise<{ url: string; status: string; timeStamp: string }> {
+export async function pingAndBroadcast(
+  wss: WebSocketServer
+): Promise<{
+  url: string;
+  consensus: VoteStatus;
+  votes: Array<{ validatorId: number; status: VoteStatus; weight: number }>;
+  timeStamp: string;
+}> {
   try {
-    const status = await validator.checkWebsite(TARGET_URL);
+    // Create an array of validator instances.
+    const validators = Array.from(
+      { length: TOTAL_VALIDATORS },
+      (_, i) => new Validator(i + 1)
+    );
+
+    // Have each validator check website concurrently.
+    // Each check returns a Vote object
+    const votesResult = await Promise.all(
+      validators.map(async (validator) => {
+        const vote = await validator.checkWebsite(TARGET_URL);
+        return {
+          validatorId: validator.id,
+          status: vote.status,
+          weight: vote.weight,
+        };
+      })
+    );
+
+    // Compute weighted consensus
+    let totalUp = 0,
+      totalDown = 0;
+    votesResult.forEach((vote) => {
+      if (vote.status === "UP") {
+        totalUp += vote.weight;
+      } else if (vote.status === "DOWN") {
+        totalDown += vote.weight;
+      }
+    });
+
+    const consensus: VoteStatus = totalUp >= totalDown ? "UP" : "DOWN";
+
+    const timeStamp = new Date().toISOString();
     const payload = {
       url: TARGET_URL,
-      status,
-      timeStamp: new Date().toISOString(),
+      consensus,
+      votes: votesResult,
+      timeStamp,
     };
 
-    info(`Pinged ${TARGET_URL}: ${status} at ${payload.timeStamp}`);
+    info(`Pinged ${TARGET_URL}: consensus ${consensus} at ${timeStamp}`);
 
     const message = JSON.stringify(payload);
-    // Broadcast to all connected WS clients.
+
+    // Broadcast the payload to all connected WS clients
     wss.clients.forEach((client) => {
       if (client.readyState === client.OPEN) {
         client.send(message);
@@ -44,12 +87,13 @@ export async function pingAndBroadcast(wss: WebSocketServer): Promise<{ url: str
 
 /**
  * Starts the continuous ping process.
- * (Used if you want continuous updates independent of HTTP triggers.)
+ *
+ * @param wss - The WebSocketServer instance.
  */
 export function startPinger(wss: WebSocketServer): void {
-  // Trigger a ping immediately.
+  // Trigger a ping immediately
   pingAndBroadcast(wss);
-  // Then set up an interval to ping every PING_INTERVAL.
+  // Set an interval ping at each PING_INTERVAL
   setInterval(() => {
     pingAndBroadcast(wss);
   }, PING_INTERVAL);
