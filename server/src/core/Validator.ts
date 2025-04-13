@@ -1,52 +1,47 @@
-import axios from 'axios';
-import { info } from '../../utils/logger';
+import axios from "axios";
+import { info } from "../../utils/logger";
 
-export type VoteStatus = 'UP' | 'DOWN'
+export type Status = 'UP' | 'DOWN';
+
 export interface Vote {
-  status: VoteStatus;
-  weight: number
+  status: Status;
+  weight: number;
 }
 
 export class Validator {
   public id: number;
   private statusMap: Map<string, Vote> = new Map();
-  public peers: Validator [] = [];
+  public peers: Validator[] = [];
 
   constructor(id: number) {
     this.id = id;
   }
 
   /**
-   * Performs a real HTTP GET Request.
-   * Returns 'UP' if the site responds w a status code b/w 200 & 399.
-   * Returns 'DOWN' if the site errors out, times out, or returns an unexpected status.
-   * 
-   * @params site - The URL to check.
-   * @returns Promise resolving to 'UP' or 'DOWN'
+   * Performs a real HTTP GET request.
+   * Returns a Vote where status is 'UP' (for HTTP status 200–399) or 'DOWN'; weight = 1 by default.
+   *
+   * @param site - The URL to check.
+   * @returns A Promise that resolves to a Vote.
    */
   public async checkWebsite(site: string): Promise<Vote> {
     try {
-      // Perform a GET request with a 5-second timeout.
-      const response = await axios.get(site, { timeout: 5000});
-      // Consider response status codes 200-399 as UP.
-      const vote: Vote = response.status >= 200 && response.status <400
-        ? { status: 'UP', weight: 1 }
-        : { status: 'DOWN', weight: 1};
-        this.statusMap.set(site, vote);
-        return vote;
-      } catch (error) {
-      // Any error (network err, timeout) is considered as DOWN.
-      const vote: Vote = {status: 'DOWN', weight: 1 };
+      const response = await axios.get(site, { timeout: 5000 });
+      const status: Status = (response.status >= 200 && response.status < 400) ? 'UP' : 'DOWN';
+      const vote: Vote = { status, weight: 1 };
+      this.statusMap.set(site, vote);
+      return vote;
+    } catch (error) {
+      const vote: Vote = { status: 'DOWN', weight: 1 };
       this.statusMap.set(site, vote);
       return vote;
     }
   }
 
   /**
-   * Gossip your status to a subset of peers.
-   * This method sends your current vote for a given site to some of your peers.
+   * Gossips the current vote for a site to a subset of peers.
    *
-   * @param site - The URL whose status will be gossiped.
+   * @param site - The URL to gossip about.
    */
   public gossip(site: string): void {
     const currentVote = this.statusMap.get(site);
@@ -54,12 +49,11 @@ export class Validator {
       info(`Validator ${this.id} has no status for site ${site} to gossip.`);
       return;
     }
-    
-    // Randomize peers and select 2 peers to notify.
+    // Randomize peers and notify 2 peers.
     const peersToNotify = this.peers.sort(() => 0.5 - Math.random()).slice(0, 2);
     peersToNotify.forEach((peer) => {
       try {
-        peer.recieveGossip(site, currentVote, this.id);
+        peer.receiveGossip(site, currentVote, this.id);
       } catch (err) {
         info(`Error during gossip from Validator ${this.id} to Validator ${peer.id}: ${err}`);
       }
@@ -67,14 +61,13 @@ export class Validator {
   }
 
   /**
-   * Receives gossip from another validator.
-   * If this validator hasn't set a status for the given site, adopt the received vote.
+   * Receives gossip from a peer; adopts the vote if none exists locally.
    *
-   * @param site - The URL the vote is about.
-   * @param vote - The Vote object received.
-   * @param fromId - The sender validator's ID.
+   * @param site - The URL.
+   * @param vote - The Vote object.
+   * @param fromId - The ID of the validator sending the vote.
    */
-  public recieveGossip(site: string, vote: Vote, fromId: number): void {
+  public receiveGossip(site: string, vote: Vote, fromId: number): void {
     if (!this.statusMap.has(site)) {
       this.statusMap.set(site, vote);
       info(`Validator ${this.id} received gossip from Validator ${fromId} for site ${site}: ${vote.status} (weight: ${vote.weight})`);
@@ -82,10 +75,10 @@ export class Validator {
   }
 
   /**
-   * Retrieves the current vote for a given site.
+   * Retrieves the current vote for a site.
    *
-   * @param site - The site URL.
-   * @returns The Vote object, if available.
+   * @param site - The URL.
+   * @returns The Vote object or undefined if not set.
    */
   public getStatus(site: string): Vote | undefined {
     return this.statusMap.get(site);

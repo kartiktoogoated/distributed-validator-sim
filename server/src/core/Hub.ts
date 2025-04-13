@@ -1,29 +1,37 @@
-import { Validator, Status } from "./Validator";
+// src/core/Hub.ts
+import { Validator, Vote, Status } from "./Validator";
 
 export class Hub {
-    private validators: Validator[];
-    private quorum: number
+  private validators: Validator[];
+  private quorum: number;
 
-    constructor(validators: Validator[], quorum: number) {
-        this.validators = validators;
-        this.quorum = quorum;
-    }
+  constructor(validators: Validator[], quorum: number) {
+    this.validators = validators;
+    this.quorum = quorum;
+  }
 
-    // Check consensus for a given site 
-    public checkConsensus(site: string): Status | null {
-        const statusCount: Record<Status, number> = { UP: 0, DOWN: 0 };
-
-        this.validators.forEach((validator) => {
-            const status = validator.getStatus(site);
-            if (status) {
-                statusCount[status]++;
-            }
-        });
-
-        // If either status reaches the quorum threshold, return it.
-        if (statusCount.DOWN >= this.quorum) return "DOWN";
-        if (statusCount.UP >= this.quorum) return "UP";
-
-        return null; // No consensus reached yet
-    }
-}
+  /**
+   * Check consensus for a given site.
+   * Aggregates the statuses from each validator, counting "UP" vs "DOWN".
+   * If either reaches the quorum threshold, return that status, else null.
+   */
+  public checkConsensus(site: string): Status | null {
+    let upWeight = 0;
+    let downWeight = 0;
+  
+    this.validators.forEach((validator) => {
+      const vote = validator.getStatus(site);
+      if (vote) {
+        if (vote.status === "UP") {
+          upWeight += vote.weight;
+        } else {
+          downWeight += vote.weight;
+        }
+      }
+    });
+  
+    if (downWeight >= this.quorum) return "DOWN";
+    if (upWeight >= this.quorum) return "UP";
+    return null;
+  }
+}  
