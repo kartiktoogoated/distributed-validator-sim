@@ -1,53 +1,39 @@
+// src/controllers/emailVerification.ts
 import { Request, Response } from "express";
 import prisma from "../prismaClient";
-import jwt from 'jsonwebtoken';
 import { info } from "../../utils/logger";
 
-const JWT_SECRET = process.env.JWT_SECRET!;
-const VERIFICATION_TOKEN_EXPIRATION = '15m';
-
-/**
- * Generates a verification token using a user's id and email.
- */
-export function generateVerificationToken(userId: number, email: string): string {
-    return jwt.sign({ userId, email }, JWT_SECRET, { expiresIn: VERIFICATION_TOKEN_EXPIRATION });
-}
-
-/**
- * Controller to verify a user's email using a token in the query string.
- * The token should be passed as a query param "token".
- */
 export async function verifyEmail(req: Request, res: Response): Promise<void> {
-    try {
-        const token = req.query.token;
-        if (!token || typeof token !=='string') {
-            res.status(400).json({ message: 'Verification token is required' });
-            return;
-        }
-
-        let payload: any;
-        try {
-            payload = jwt.verify(token , JWT_SECRET);
-        } catch (error) {
-            res.status(400).json({ message: 'Invalid or expired verification token' });
-            return;
-        }
-
-        // Update user as verified.
-        await prisma.user.update({
-            where: { id: payload.userId },
-            data: {
-                isVerified: true,
-                otp: null,
-                otpExpires: null,
-            },
-        });
-
-        info(`User with id ${payload.userId} has been verified.`);
-        res.status(200).json({ message: 'Email verified successfully' });
-    } catch (error: any) {
-        res
-            .status(500)
-            .json({ message: 'Internal server error', error: error.message });
+  try {
+    const { email, otp } = req.body;
+    if (!email || !otp) {
+      res.status(400).json({ message: "Email and OTP are required" });
+      return;
     }
+
+    // Find the user by email.
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      res.status(400).json({ message: "Invalid email" });
+      return;
+    }
+    if (user.isVerified) {
+      res.status(400).json({ message: "User already verified" });
+      return;
+    }
+
+    // Instead of updating otp and otpExpires (which no longer exist),
+    // simply mark the user as verified.
+    await prisma.user.update({
+      where: { email },
+      data: {
+        isVerified: true,
+      },
+    });
+
+    info(`User with email ${email} has been verified.`);
+    res.status(200).json({ message: "User verified successfully" });
+  } catch (error: any) {
+    res.status(500).json({ message: "Internal server error", error: error.message });
+  }
 }

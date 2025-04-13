@@ -4,12 +4,13 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "ts-node src/routes/api/v1/server.ts",
-    "simulate": "ts-node src/main.ts",
-    "cli": "ts-node src/cli.ts",
-    "migrate": "pnpx prisma migrate dev --name init",
-    "generate": "pnpx prisma generate"
-  },
+  "build": "tsc",
+  "start": "ts-node src/routes/api/v1/server.ts",
+  "simulate": "ts-node src/main.ts",
+  "cli": "ts-node src/cli.ts",
+  "migrate": "pnpx prisma migrate dev --name init",
+  "generate": "pnpx prisma generate"
+},
   "keywords": [],
   "author": "",
   "license": "ISC",
