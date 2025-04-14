@@ -10,6 +10,7 @@ import createSimulationRouter from "./simulation";
 import { initProducer } from "../../../services/producer";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
+import createStatusRouter from "./status";
 
 dotenv.config();
 
@@ -65,6 +66,9 @@ initProducer().catch((err) => {
 // Inject the WS server instance into our simulation route.
 const simulationRouter = createSimulationRouter(wss);
 app.use("/api/simulate", simulationRouter);
+
+const statusRouter = createStatusRouter(wss);
+app.use('/api', statusRouter);
 
 // ===== Start the Server =====
 server.listen(PORT,  () => {
