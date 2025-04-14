@@ -1,5 +1,5 @@
 // src/routes/api/v1/server.ts
-import express, { Request, Response, NextFunction, Router } from "express";
+import express from "express";
 import cors from "cors";
 import http from "http";
 import { WebSocketServer } from "ws";
@@ -8,15 +8,30 @@ import { info, error as logError } from "../../../../utils/logger";
 import authRouter from "./auth";
 import createSimulationRouter from "./simulation"; 
 import { initProducer } from "../../../services/producer";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ===== Middleware =====
+// ===== Security Middleware =====
+app.use(helmet());
+
+// ===== CORS & JSONMiddleware =====
 app.use(cors());
 app.use(express.json());
+
+// ===== Rate Limiting =====
+// Limiting each IP to 100 req per 15 mins
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: "Too many requests from this IP, please try again later"
+})
+
+app.use(limiter);
 
 // ===== API Routes =====
 // Mount authentication routes under /api/auth.
