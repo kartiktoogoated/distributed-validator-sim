@@ -4,13 +4,13 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-  "generate": "pnpx prisma generate",
-  "build": "pnpm run generate && tsc",
-  "start": "ts-node src/routes/api/v1/server.ts",
-  "simulate": "ts-node src/main.ts",
-  "cli": "ts-node src/cli.ts",
-  "migrate": "pnpx prisma migrate dev --name init"
-},
+    "generate": "pnpx prisma generate",
+    "build": "pnpm run generate && tsc",
+    "start": "ts-node src/routes/api/v1/server.ts",
+    "simulate": "ts-node src/main.ts",
+    "cli": "ts-node src/cli.ts",
+    "migrate": "pnpx prisma migrate dev --name init"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
@@ -34,6 +34,7 @@
     "dotenv": "^16.4.7",
     "express": "^5.1.0",
     "jsonwebtoken": "^9.0.2",
+    "kafkajs": "^2.2.4",
     "nodemailer": "^6.10.0",
     "ws": "^8.18.1"
   }

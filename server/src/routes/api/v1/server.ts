@@ -6,9 +6,8 @@ import { WebSocketServer } from "ws";
 import dotenv from "dotenv";
 import { info, error as logError } from "../../../../utils/logger";
 import authRouter from "./auth";
-import statusRouter from "./status";  // your status router remains unchanged
-import createSimulationRouter from "./simulation"; // Import the simulation router factory
-import { pingAndBroadcast, startPinger } from "../../../core/pinger";
+import createSimulationRouter from "./simulation"; 
+import { initProducer } from "../../../services/producer";
 
 dotenv.config();
 
@@ -42,6 +41,10 @@ wss.on("connection", (ws) => {
   ws.on("error", (err) => {
     logError(`WebSocket error: ${err}`);
   });
+});
+
+initProducer().catch((err) => {
+  console.error("Kafka producer failed to initialize", err);
 });
 
 // Inject the WS server instance into our simulation route.
