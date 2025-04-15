@@ -1,4 +1,3 @@
-// src/routes/api/v1/server.ts
 import express from "express";
 import cors from "cors";
 import http from "http";
@@ -11,6 +10,7 @@ import { initProducer } from "../../../services/producer";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import createStatusRouter from "./status";
+import websiteRouter from "./website";
 
 dotenv.config();
 
@@ -37,8 +37,7 @@ app.use(limiter);
 // ===== API Routes =====
 // Mount authentication routes under /api/auth.
 app.use("/api/auth", authRouter);
-// Mount status route under /api (for on-demand WS ping, if needed).
-// app.use("/api/status", statusRouter);
+app.use('/api', websiteRouter);
 
 // ===== Create and Configure the HTTP and WebSocket Server =====
 // Create an HTTP server from the Express app.

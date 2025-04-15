@@ -11,9 +11,10 @@
     "esModuleInterop": true
   },
   "include": [
-    "src",
+    "src/**/*",
     "global.d.ts",
     "../api",
-    "api/index.ts"
-  ]
+    "api/index.ts",
+    "types/**/*"
+, ]
 }
