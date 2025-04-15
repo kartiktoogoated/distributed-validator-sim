@@ -1,0 +1,14 @@
+-- CreateTable
+CREATE TABLE "ValidatorMeta" (
+    "id" SERIAL NOT NULL,
+    "validatorId" INTEGER NOT NULL,
+    "correctVotes" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "totalVotes" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "averageLatency" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "uptimePercent" DOUBLE PRECISION NOT NULL DEFAULT 100,
+    "weight" DOUBLE PRECISION NOT NULL DEFAULT 1,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "ValidatorMeta_pkey" PRIMARY KEY ("id")
+);
