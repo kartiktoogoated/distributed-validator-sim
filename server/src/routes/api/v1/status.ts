@@ -15,7 +15,15 @@ export default function createStatusRouter(ws: WebSocketServer) {
 
   router.get("/status", async (req: Request, res: Response): Promise<void> => {
     try {
-      const payload = await pingAndBroadcast(ws);
+      // Extract the target URL from query parameters or use a default.
+      const targetUrl = (req.query.url as string) || process.env.DEFAULT_TARGET_URL || "http://example.com";
+      
+      if (!targetUrl) {
+        res.status(400).json({ success: false, message: "Target URL not provided" });
+        return;
+      }
+      
+      const payload = await pingAndBroadcast(ws, targetUrl);
       info(`Status route ping result: ${JSON.stringify(payload)}`);
       res.json({ success: true, ...payload });
     } catch (error: any) {
@@ -23,6 +31,7 @@ export default function createStatusRouter(ws: WebSocketServer) {
       res.status(500).json({ success: false, message: "Failed to check website status.", error: error.message });
     }
   });
+  
 
   return router;
 }
