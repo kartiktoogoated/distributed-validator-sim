@@ -49,35 +49,45 @@ export class Validator {
       info(`Validator ${this.id} has no status for site ${site} to gossip.`);
       return;
     }
-    // Randomize peers and notify 2 peers.
-    const peersToNotify = this.peers.sort(() => 0.5 - Math.random()).slice(0, 2);
-    peersToNotify.forEach((peer) => {
-      try {
-        peer.receiveGossip(site, currentVote, this.id);
-      } catch (err) {
-        info(`Error during gossip from Validator ${this.id} to Validator ${peer.id}: ${err}`);
-      }
-    });
+    
+    // Simulae message loss: 20% chance to drop the gossip message.
+    if (Math.random() < 0.2) {
+      info(`Validator ${this.id} dropped gossip message for ${site}.`);
+      return;
+    }
+
+  // Simulate random delay (100ms to 400ms) before sending gossip.
+  const delay = Math.floor(Math.random() * 300) + 100;
+    setTimeout(() => {
+      const peersToNotify = this.peers.sort(() => 0.5 - Math.random()).slice(0, 2);
+      peersToNotify.forEach((peer) => {
+        try {
+          peer.receiveGossip(site, currentVote, this.id);
+        } catch (err) {
+          info(`Error during gossip from Validator ${this.id} to Validator ${peer.id}: ${err}`);
+        }
+      });
+    }, delay);
   }
 
-  /**
-   * Receives gossip from a peer; adopts the vote if none exists locally.
+   /**
+   * Receives gossip from a peer and adopts the vote if no vote exists locally.
    *
    * @param site - The URL.
    * @param vote - The Vote object.
-   * @param fromId - The ID of the validator sending the vote.
+   * @param fromId - The sender validator's ID.
    */
-  public receiveGossip(site: string, vote: Vote, fromId: number): void {
+   public receiveGossip(site: string, vote: Vote, fromId: number): void {
     if (!this.statusMap.has(site)) {
       this.statusMap.set(site, vote);
-      info(`Validator ${this.id} received gossip from Validator ${fromId} for site ${site}: ${vote.status} (weight: ${vote.weight})`);
+      info(`Validator ${this.id} received gossip from Validator ${fromId} for ${site}: ${vote.status} (weight: ${vote.weight})`);
     }
   }
 
   /**
-   * Retrieves the current vote for a site.
+   * Retrieves the current vote for a given site.
    *
-   * @param site - The URL.
+   * @param site - The site URL.
    * @returns The Vote object or undefined if not set.
    */
   public getStatus(site: string): Vote | undefined {
