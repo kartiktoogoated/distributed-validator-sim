@@ -20,24 +20,24 @@ const PORT = process.env.PORT || 3000;
 // ===== Security Middleware =====
 app.use(helmet());
 
-// ===== CORS & JSONMiddleware =====
+// ===== CORS & JSON Middleware =====
 app.use(cors());
 app.use(express.json());
 
 // ===== Rate Limiting =====
-// Limiting each IP to 100 req per 15 mins
+// Limiting each IP to 100 requests per 15 minutes.
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
+  windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100,
   message: "Too many requests from this IP, please try again later"
-})
-
+});
 app.use(limiter);
 
 // ===== API Routes =====
 // Mount authentication routes under /api/auth.
 app.use("/api/auth", authRouter);
-app.use('/api', websiteRouter);
+// Mount website management routes under /api.
+app.use("/api", websiteRouter);
 
 // ===== Create and Configure the HTTP and WebSocket Server =====
 // Create an HTTP server from the Express app.
@@ -58,18 +58,20 @@ wss.on("connection", (ws) => {
   });
 });
 
+// Initialize the Kafka producer.
 initProducer().catch((err) => {
   console.error("Kafka producer failed to initialize", err);
 });
 
-// Inject the WS server instance into our simulation route.
+// Inject the WebSocket server instance into our simulation route.
 const simulationRouter = createSimulationRouter(wss);
 app.use("/api/simulate", simulationRouter);
 
+// Inject the WebSocket server instance into our status route.
 const statusRouter = createStatusRouter(wss);
-app.use('/api', statusRouter);
+app.use("/api", statusRouter);
 
 // ===== Start the Server =====
-server.listen(PORT,  () => {
+server.listen(PORT, () => {
   info(`Server is listening on port ${PORT}`);
 });

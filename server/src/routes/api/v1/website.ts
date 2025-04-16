@@ -1,10 +1,9 @@
-import express, { response, Response, Router } from "express";
-import prisma from "prismaClient";
+import  { Response, Router } from "express";
+import prisma from "../../../prismaClient";
 import {
   authMiddleware,
   AuthenticatedRequest,
-} from "middlewares/authMiddleware";
-import { uptime } from "process";
+} from "../../../middlewares/authMiddleware";
 
 const websiteRouter = Router();
 
