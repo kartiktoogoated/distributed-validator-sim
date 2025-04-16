@@ -118,7 +118,9 @@ export function startPinger(wss: WebSocketServer) {
   async function pingWebsites() {
     try {
       // Fetch all websites that users have added for monitoring.
-      const websites = await prisma.website.findMany();
+      const websites = await prisma.website.findMany({
+        where: { paused: false },
+      });
       for (const website of websites) {
         await pingAndBroadcast(wss, website.url);
       }
