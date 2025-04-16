@@ -1,5 +1,5 @@
 import express, { Request, Response } from "express";
-import { pingAndBroadcast } from "../../../core/Pinger"; // Adjust the path as needed
+import { pingAndBroadcast } from "../../../core/pinger";
 import { info, error as logError } from "../../../../utils/logger";
 import { WebSocketServer } from "ws";
 

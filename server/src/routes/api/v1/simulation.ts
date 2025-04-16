@@ -1,6 +1,6 @@
 // src/routes/simulation.ts
 import express, { Request, Response } from "express";
-import { pingAndBroadcast, startPinger } from "../../../core/Pinger";
+import { pingAndBroadcast, startPinger } from "../../../core/pinger";
 import { info, error as logError } from "../../../../utils/logger";
 import { WebSocketServer } from "ws";
 
