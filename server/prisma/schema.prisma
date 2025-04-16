@@ -46,10 +46,13 @@ model ValidatorMeta {
 }
 
 model Website {
-  id        String   @id @default(uuid())
-  url       String   @unique
-  userId    String
-  createdAt DateTime @default(now())
+  id          String   @id @default(uuid())
+  url         String   @unique
+  description String?
+  userId      String
+  createdAt   DateTime @default(now())
+  paused      Boolean  @default(false)
 
-  user      User     @relation(fields: [userId], references: [id])
+  user        User     @relation(fields: [userId], references: [id])
 }
+
