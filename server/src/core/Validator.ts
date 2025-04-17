@@ -39,9 +39,9 @@ export class Validator {
     if (!currentVote) return info(`Validator ${this.id} has no vote for ${site}`);
 
     // 20% drop chance
-    if (Math.random() < 0.2) {
-      return info(`Validator ${this.id} dropped gossip for ${site}`);
-    }
+    // if (Math.random() < 0.2) {
+    //   return info(`Validator ${this.id} dropped gossip for ${site}`);
+    // }
 
     const jitter = Math.floor(Math.random() * 300) + 100;
     setTimeout(() => {

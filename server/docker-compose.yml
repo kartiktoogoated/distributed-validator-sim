@@ -1,7 +1,6 @@
-# docker-compose.yml
+version: "3.8"
 
 services:
-  # 1) Postgres
   db:
     image: postgres:15
     container_name: prisma_postgres
@@ -15,7 +14,6 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  # 2) Zookeeper
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
     container_name: zookeeper
@@ -26,7 +24,6 @@ services:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
 
-  # 3) Kafka
   kafka:
     image: confluentinc/cp-kafka:7.5.0
     container_name: kafka
@@ -42,7 +39,6 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 
-  # 4) Your Node “validator_server”
   validator_server:
     build:
       context: .
@@ -57,6 +53,9 @@ services:
       - "3000:3000"
     env_file:
       - .env.docker
+    # On Linux, if host.docker.internal doesn’t exist, uncomment this:
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
 
 volumes:
   postgres_data:
