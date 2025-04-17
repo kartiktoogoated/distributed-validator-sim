@@ -1,34 +1,30 @@
-# Dockerfile
-
+# 1) Builder stage
 FROM node:18-alpine AS builder
-
 WORKDIR /app
 
-# Copy package.json and pnpm-lock.yaml first for caching.
+# Install deps & generate client
 COPY package.json pnpm-lock.yaml ./
-
 RUN npm install -g pnpm \
-    && pnpm install --frozen-lockfile
+ && pnpm install --frozen-lockfile
 
-# Copy the rest of the application source code.
 COPY . .
-
-# Generate Prisma client
 RUN pnpm run generate
-
-# Build the TypeScript code.
 RUN pnpm run build
 
+# 2) Final stage
 FROM node:18-alpine
-
 WORKDIR /app
 
+# Copy built code
 COPY --from=builder /app/dist ./dist
-COPY package.json pnpm-lock.yaml ./
 
-RUN npm install -g pnpm \
-    && pnpm install --prod --frozen-lockfile
+# Copy ALL node_modules (so @prisma/client and .prisma/client come along)
+COPY --from=builder /app/node_modules ./node_modules
+
+# Copy package files for health
+COPY package.json pnpm-lock.yaml ./
 
 EXPOSE 3000
 
-CMD ["node", "dist/routes/api/v1/server.js"]
+# Launch your server entrypoint
+CMD ["node", "dist/src/routes/api/v1/server.js"]

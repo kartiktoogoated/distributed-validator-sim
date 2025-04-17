@@ -1,4 +1,3 @@
-// src/core/Hub.ts
 import { Validator, Vote, Status } from "./Validator";
 
 export class Hub {

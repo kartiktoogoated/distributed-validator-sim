@@ -5,6 +5,14 @@ import { Validator } from "../../../core/Validator";
 import { GossipManager } from "../../../core/GossipManager";
 import { Hub } from "../../../core/Hub";
 import prisma from "../../../prismaClient";
+import dotenv from "dotenv";
+
+dotenv.config();
+
+// Parse PEERS env var into an array of "host:port" strings.
+const peerList: string[] = process.env.PEERS
+  ? process.env.PEERS.split(",").map(s => s.trim()).filter(Boolean)
+  : [];
 
 const TOTAL_VALIDATORS = 5;
 const GOSSIP_ROUNDS = 3;
@@ -17,8 +25,6 @@ export default function createSimulationRouter(ws: WebSocketServer) {
   let targetUrl: string = "";
 
   // Helper function to run one simulation round.
-  // It pings each validator, logs the votes, triggers gossip, checks consensus,
-  // and broadcasts the results via WebSocket.
   async function runSimulationRound(): Promise<void> {
     try {
       // Each validator performs a website check.
@@ -39,7 +45,7 @@ export default function createSimulationRouter(ws: WebSocketServer) {
       const gossipManager = new GossipManager(validators, GOSSIP_ROUNDS);
       await gossipManager.runGossipRounds(targetUrl);
 
-      // Use the Hub to derive consensus (for example, using majority weight).
+      // Use the Hub to derive consensus.
       const hub = new Hub(validators, Math.ceil(TOTAL_VALIDATORS / 2));
       const consensus = hub.checkConsensus(targetUrl);
 
@@ -50,12 +56,7 @@ export default function createSimulationRouter(ws: WebSocketServer) {
         weight: v.getStatus(targetUrl)?.weight || 1,
       }));
 
-      const payload = {
-        url: targetUrl,
-        consensus,
-        votes,
-        timeStamp,
-      };
+      const payload = { url: targetUrl, consensus, votes, timeStamp };
 
       // Broadcast payload to all connected WebSocket clients.
       ws.clients.forEach((client) => {
@@ -69,39 +70,38 @@ export default function createSimulationRouter(ws: WebSocketServer) {
   }
 
   // Route handler for the GET / endpoint
-  router.get("/", async (req: Request, res: Response): Promise<void> => {
+  router.get("/", async (req: Request, res: Response) => {
     try {
-      // Determine the target URL from query parameters or fallback to defaults.
-      targetUrl =
-        (req.query.url as string) ||
-        process.env.DEFAULT_TARGET_URL ||
-        "http://example.com";
+      // Determine the target URL.
+      targetUrl = (req.query.url as string)
+        || process.env.DEFAULT_TARGET_URL
+        || "http://example.com";
+
       if (!targetUrl) {
-        res.status(400).json({
-          success: false,
-          message: "Target URL not provided",
-        });
+        res.status(400).json({ success: false, message: "Target URL not provided" });
         return;
       }
 
-      // If continuous pinging has not started yet, initialize validators and start the loop.
       if (!continuousStarted) {
         // Create validators only once.
-        validators = Array.from({ length: TOTAL_VALIDATORS }, (_, i) => new Validator(i + 1));
-        // Set up peers for each validator.
-        validators.forEach((validator, idx) => {
-          validator.peers = validators.filter((_, peerIdx) => peerIdx !== idx);
+        validators = Array.from(
+          { length: TOTAL_VALIDATORS },
+          (_, i) => new Validator(i + 1)
+        );
+
+        // Assign the same peerList (host:port) to each validator.
+        validators.forEach((validator) => {
+          validator.peers = peerList;
         });
 
-        // Start continuous simulation rounds using setInterval.
+        // Start continuous simulation rounds.
         setInterval(runSimulationRound, PING_INTERVAL);
         continuousStarted = true;
         info("Started continuous simulation loop.");
       }
 
-      // Execute a simulation round immediately as feedback.
+      // Run one round immediately.
       await runSimulationRound();
-
       res.json({
         success: true,
         message: "Continuous simulation started",
@@ -109,9 +109,7 @@ export default function createSimulationRouter(ws: WebSocketServer) {
       });
     } catch (error: any) {
       logError(`Error in /api/simulate: ${error}`);
-      res
-        .status(500)
-        .json({ success: false, message: error.message });
+      res.status(500).json({ success: false, message: error.message });
     }
   });
 

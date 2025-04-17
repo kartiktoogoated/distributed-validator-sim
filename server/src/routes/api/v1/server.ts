@@ -3,75 +3,71 @@ import cors from "cors";
 import http from "http";
 import { WebSocketServer } from "ws";
 import dotenv from "dotenv";
-import { info, error as logError } from "../../../../utils/logger";
-import authRouter from "./auth";
-import createSimulationRouter from "./simulation"; 
-import { initProducer } from "../../../services/producer";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
-import createStatusRouter from "./status";
+
+import { info, error as logError } from "../../../../utils/logger";
+import authRouter from "./auth";
 import websiteRouter from "./website";
+import createSimulationRouter from "./simulation";
+import createStatusRouter from "./status";
+import { initGossipRouter } from "./gossip";
+import { initProducer } from "../../../services/producer";
+import { Validator } from "../../../core/Validator"; 
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ===== Security Middleware =====
+// ===== Security & Middleware =====
 app.use(helmet());
-
-// ===== CORS & JSON Middleware =====
 app.use(cors());
 app.use(express.json());
-
-// ===== Rate Limiting =====
-// Limiting each IP to 100 requests per 15 minutes.
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+app.use(rateLimit({
+  windowMs: 15 * 60 * 1000,
   max: 100,
   message: "Too many requests from this IP, please try again later"
-});
-app.use(limiter);
+}));
 
-// ===== API Routes =====
-// Mount authentication routes under /api/auth.
+// ===== API Routes (no change) =====
 app.use("/api/auth", authRouter);
-// Mount website management routes under /api.
 app.use("/api", websiteRouter);
 
-// ===== Create and Configure the HTTP and WebSocket Server =====
-// Create an HTTP server from the Express app.
+// ===== Instantiate Local Validator & Peers =====
+const validatorId = Number(process.env.VALIDATOR_ID) || 1;
+const peersEnv = process.env.PEERS || "";  
+const peerList = peersEnv.split(",").map(s => s.trim()).filter(Boolean);
+
+const localValidator = new Validator(validatorId);
+localValidator.peers = peerList;    // e.g. ["192.168.1.10:3000","192.168.1.11:3000"]
+
+// ===== Gossip Endpoint =====
+app.use("/api", initGossipRouter(localValidator));
+
+// ===== HTTP & WebSocket Server Setup =====
 const server = http.createServer(app);
-
-// Create the WebSocket server attached to the HTTP server.
 const wss = new WebSocketServer({ server });
-wss.on("connection", (ws) => {
+
+wss.on("connection", ws => {
   info("New WebSocket client connected");
-  
-  ws.on("message", (message: string) => {
-    info(`Received WS message: ${message}`);
-    ws.send(`Echo: ${message}`);
+  ws.on("message", (msg: string) => {
+    info(`WS message: ${msg}`);
+    ws.send(`Echo: ${msg}`);
   });
-  
-  ws.on("error", (err) => {
-    logError(`WebSocket error: ${err}`);
-  });
+  ws.on("error", err => logError(`WebSocket error: ${err}`));
 });
 
-// Initialize the Kafka producer.
-initProducer().catch((err) => {
-  console.error("Kafka producer failed to initialize", err);
+// ===== Kafka Producer =====
+initProducer().catch(err => {
+  logError(`Kafka producer init failed: ${err}`);
 });
 
-// Inject the WebSocket server instance into our simulation route.
-const simulationRouter = createSimulationRouter(wss);
-app.use("/api/simulate", simulationRouter);
+// ===== Simulation & Status Routes =====
+app.use("/api/simulate", createSimulationRouter(wss));
+app.use("/api", createStatusRouter(wss));
 
-// Inject the WebSocket server instance into our status route.
-const statusRouter = createStatusRouter(wss);
-app.use("/api", statusRouter);
-
-// ===== Start the Server =====
+// ===== Start Listening =====
 server.listen(PORT, () => {
   info(`Server is listening on port ${PORT}`);
 });
