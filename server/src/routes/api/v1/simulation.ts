@@ -6,111 +6,89 @@ import { GossipManager } from "../../../core/GossipManager";
 import { Hub } from "../../../core/Hub";
 import prisma from "../../../prismaClient";
 import dotenv from "dotenv";
+import { raft } from "./server";  // ← same RaftNode instance exported from server.ts
 
 dotenv.config();
 
-// Parse PEERS env var into an array of "host:port" strings.
-const peerList: string[] = process.env.PEERS
-  ? process.env.PEERS.split(",").map(s => s.trim()).filter(Boolean)
-  : [];
+const peerList = (process.env.PEERS || "")
+  .split(",")
+  .map(s => s.trim())
+  .filter(Boolean);
 
 const TOTAL_VALIDATORS = 5;
-const GOSSIP_ROUNDS = 3;
-const PING_INTERVAL = 60000; // Interval in milliseconds (60 seconds)
+const GOSSIP_ROUNDS    = 3;
+const PING_INTERVAL    = 60_000;
 
 export default function createSimulationRouter(ws: WebSocketServer) {
   const router = express.Router();
-  let continuousStarted = false;
+  let started   = false;
   let validators: Validator[] = [];
-  let targetUrl: string = "";
+  let targetUrl = "";
 
-  // Helper function to run one simulation round.
-  async function runSimulationRound(): Promise<void> {
+  async function runSimulationRound() {
     try {
-      // Each validator performs a website check.
-      for (const validator of validators) {
-        const vote = await validator.checkWebsite(targetUrl);
+      // 1) each validator pings
+      for (const v of validators) {
+        const vote = await v.checkWebsite(targetUrl);
         await prisma.validatorLog.create({
           data: {
-            validatorId: validator.id,
+            validatorId: v.id,
             site: targetUrl,
             status: vote.status,
             timestamp: new Date(),
           },
         });
-        info(`Validator ${validator.id} voted: ${vote.status}`);
+        info(`Validator ${v.id} voted: ${vote.status}`);
       }
 
-      // Run gossip simulation rounds.
-      const gossipManager = new GossipManager(validators, GOSSIP_ROUNDS);
-      await gossipManager.runGossipRounds(targetUrl);
+      // 2) gossip
+      const gm = new GossipManager(validators, GOSSIP_ROUNDS);
+      await gm.runGossipRounds(targetUrl);
 
-      // Use the Hub to derive consensus.
-      const hub = new Hub(validators, Math.ceil(TOTAL_VALIDATORS / 2));
+      // 3) hub consensus
+      const hub       = new Hub(validators, Math.ceil(TOTAL_VALIDATORS/2));
       const consensus = hub.checkConsensus(targetUrl);
 
-      const timeStamp = new Date().toISOString();
-      const votes = validators.map((v) => ({
+      const ts    = new Date().toISOString();
+      const votes = validators.map(v => ({
         validatorId: v.id,
-        status: v.getStatus(targetUrl)?.status || "UNKNOWN",
-        weight: v.getStatus(targetUrl)?.weight || 1,
+        status:      v.getStatus(targetUrl)?.status  || "UNKNOWN",
+        weight:      v.getStatus(targetUrl)?.weight  || 1
       }));
 
-      const payload = { url: targetUrl, consensus, votes, timeStamp };
+      const payload = { url: targetUrl, consensus, votes, ts };
 
-      // Broadcast payload to all connected WebSocket clients.
-      ws.clients.forEach((client) => {
-        if (client.readyState === client.OPEN) {
-          client.send(JSON.stringify(payload));
-        }
+      // 4) if I'm leader, propose into Raft
+      try {
+        raft.propose(payload);
+      } catch (_) {
+        info("Not leader—skipping raft.propose");
+      }
+
+      // 5) push immedately so leader node UI sees it
+      ws.clients.forEach(c => {
+        if (c.readyState === c.OPEN) c.send(JSON.stringify(payload));
       });
     } catch (err) {
-      logError(`Error during simulation round: ${err}`);
+      logError(`Simulation error: ${err}`);
     }
   }
 
-  // Route handler for the GET / endpoint
   router.get("/", async (req: Request, res: Response) => {
-    try {
-      // Determine the target URL.
-      targetUrl = (req.query.url as string)
-        || process.env.DEFAULT_TARGET_URL
-        || "http://example.com";
+    targetUrl = (req.query.url as string)
+             || process.env.DEFAULT_TARGET_URL
+             || "http://example.com";
 
-      if (!targetUrl) {
-        res.status(400).json({ success: false, message: "Target URL not provided" });
-        return;
-      }
-
-      if (!continuousStarted) {
-        // Create validators only once.
-        validators = Array.from(
-          { length: TOTAL_VALIDATORS },
-          (_, i) => new Validator(i + 1)
-        );
-
-        // Assign the same peerList (host:port) to each validator.
-        validators.forEach((validator) => {
-          validator.peers = peerList;
-        });
-
-        // Start continuous simulation rounds.
-        setInterval(runSimulationRound, PING_INTERVAL);
-        continuousStarted = true;
-        info("Started continuous simulation loop.");
-      }
-
-      // Run one round immediately.
-      await runSimulationRound();
-      res.json({
-        success: true,
-        message: "Continuous simulation started",
-        targetUrl,
-      });
-    } catch (error: any) {
-      logError(`Error in /api/simulate: ${error}`);
-      res.status(500).json({ success: false, message: error.message });
+    if (!started) {
+      validators = Array.from({length: TOTAL_VALIDATORS}, (_, i) => new Validator(i+1));
+      validators.forEach(v => v.peers = peerList);
+      setInterval(runSimulationRound, PING_INTERVAL);
+      started = true;
+      info("Simulation loop started");
     }
+
+    await runSimulationRound();
+    res.json({ success: true, message: "Simulation kicked off", targetUrl });
   });
 
   return router;

@@ -1,10 +1,7 @@
-version: "3.8"
-
+# docker-compose.yml
 services:
   db:
     image: postgres:15
-    container_name: prisma_postgres
-    restart: always
     environment:
       POSTGRES_USER: prisma
       POSTGRES_PASSWORD: prisma
@@ -16,46 +13,56 @@ services:
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
-    container_name: zookeeper
-    restart: always
-    ports:
-      - "2181:2181"
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
 
   kafka:
     image: confluentinc/cp-kafka:7.5.0
-    container_name: kafka
-    restart: always
     depends_on:
       - zookeeper
-    ports:
-      - "9092:9092"
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    ports:
+      - "9092:9092"
 
-  validator_server:
+  # ——— your first validator instance (node A) ———
+  validator_a:
+    image: validator_a                
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: validator_server
-    restart: always
+    container_name: validator_a       
     depends_on:
       - db
-      - zookeeper
       - kafka
+      - zookeeper
     ports:
       - "3000:3000"
     env_file:
-      - .env.docker
-    # On Linux, if host.docker.internal doesn’t exist, uncomment this:
-    # extra_hosts:
-    #   - "host.docker.internal:host-gateway"
+      - .env.nodeA
+
+  # ——— your second validator instance (node B) ———
+  validator_b:
+    image: validator_b                
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: validator_b       
+    depends_on:
+      - db
+      - kafka
+      - zookeeper
+    ports:
+      - "3001:3000"                   # host 3001 → container 3000
+    env_file:
+      - .env.nodeB
 
 volumes:
   postgres_data:
