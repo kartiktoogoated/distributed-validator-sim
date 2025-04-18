@@ -1,6 +1,4 @@
-// src/cli.ts
 import prisma from "./prismaClient";
-import { info } from "../utils/logger";
 
 async function fetchLogs(): Promise<void> {
   try {

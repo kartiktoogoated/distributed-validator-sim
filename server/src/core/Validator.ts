@@ -11,7 +11,7 @@ export interface Vote {
 export class Validator {
   public id: number;
   private statusMap = new Map<string, Vote>();
-  public peers: string[] = []; // e.g. ["192.168.1.101:3000", "validator2.local:3000"]
+  public peers: string[] = []; 
 
   constructor(id: number) {
     this.id = id;
@@ -39,9 +39,9 @@ export class Validator {
     if (!currentVote) return info(`Validator ${this.id} has no vote for ${site}`);
 
     // 20% drop chance
-    // if (Math.random() < 0.2) {
-    //   return info(`Validator ${this.id} dropped gossip for ${site}`);
-    // }
+    if (Math.random() < 0.2) {
+      return info(`Validator ${this.id} dropped gossip for ${site}`);
+    }
 
     const jitter = Math.floor(Math.random() * 300) + 100;
     setTimeout(() => {

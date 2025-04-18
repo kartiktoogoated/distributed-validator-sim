@@ -75,7 +75,7 @@ export default function createSimulationRouter(ws: WebSocketServer) {
       // Determine the target URL.
       targetUrl = (req.query.url as string)
         || process.env.DEFAULT_TARGET_URL
-        || "http://google.com";
+        || "http://example.com";
 
       if (!targetUrl) {
         res.status(400).json({ success: false, message: "Target URL not provided" });

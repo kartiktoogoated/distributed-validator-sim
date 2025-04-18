@@ -1,4 +1,3 @@
-// src/routes/api/v1/gossip.ts
 import { Router, Request, Response } from "express";
 import { info } from "../../../../utils/logger";
 import { Validator, Vote } from "../../../core/Validator"; // fix path if needed

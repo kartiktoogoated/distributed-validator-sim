@@ -1,4 +1,3 @@
-// src/controllers/emailVerification.ts
 import { Request, Response } from "express";
 import prisma from "../prismaClient";
 import { info } from "../../utils/logger";

@@ -1,3 +1,6 @@
 node_modules/
 
-.env*server/.env*
+.env*
+# ignore only the docker‑compose env file
+.env.docker
+

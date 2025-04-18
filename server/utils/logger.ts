@@ -6,7 +6,6 @@ export enum LogLevel {
 
 export function log(message: string, level: LogLevel = LogLevel.INFO): void {
     const timestamp = new Date().toISOString();
-    // you cam extend this to write to a file if needed.
     console.log(`[${timestamp}] [${level}] ${message}`);
 }
 
