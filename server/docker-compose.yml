@@ -60,7 +60,7 @@ services:
       - kafka
       - zookeeper
     ports:
-      - "3001:3000"                   # host 3001 → container 3000
+      - "3001:3000"                   
     env_file:
       - .env.nodeB
 
