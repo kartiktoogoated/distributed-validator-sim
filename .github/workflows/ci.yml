@@ -1,0 +1,43 @@
+name: CI & Docker Build + Push
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: ⬇️ Checkout repository
+        uses: actions/checkout@v3
+
+      - name: 🟢 Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: ⬇️ Install pnpm
+        run: npm install -g pnpm
+
+      - name: 🏷 Show pnpm version (debug step)
+        run: pnpm --version
+
+      - name: 📦 Install dependencies
+        working-directory: server
+        run: pnpm install
+
+      - name: 🔨 Build TypeScript
+        working-directory: server
+        run: pnpm run build
+
+      - name: 🐳 Login to DockerHub
+        run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+
+      - name: 🧱 Build Docker image
+        run: docker build -f server/Dockerfile -t ${{ secrets.DOCKER_USERNAME }}/distributed-validator-sim:latest server/
+
+      - name: 🚀 Push Docker image
+        run: docker push ${{ secrets.DOCKER_USERNAME }}/distributed-validator-sim:latest
