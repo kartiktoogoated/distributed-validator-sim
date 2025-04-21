@@ -1,0 +1,107 @@
+version: "3.8"
+
+services:
+  db:
+    image: postgres:15
+    container_name: db
+    environment:
+      POSTGRES_USER: prisma
+      POSTGRES_PASSWORD: prisma
+      POSTGRES_DB: mydb
+    ports:
+      - "5430:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - raftnet
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - raftnet
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    ports:
+      - "9092:9092"
+    networks:
+      - raftnet
+
+  # Node A (Windows) — not started on Mac
+  # validator_a:
+  #   image: validator
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   container_name: validator_a
+  #   depends_on:
+  #     - db
+  #     - kafka
+  #     - zookeeper
+  #   ports:
+  #     - "3000:3000"
+  #   env_file:
+  #     - .env.nodeA
+  #   networks:
+  #     - raftnet
+  #   restart: always
+
+  # Node B (Windows) — not started on Mac
+  # validator_b:
+  #   image: validator
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   container_name: validator_b
+  #   depends_on:
+  #     - db
+  #     - kafka
+  #     - zookeeper
+  #   ports:
+  #     - "3001:3000"
+  #   env_file:
+  #     - .env.nodeB
+  #   networks:
+  #     - raftnet
+  #   restart: always
+
+  # Node C (Mac)
+  validator_c:
+    image: validator
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: validator_c
+    depends_on:
+      - db
+      - kafka
+      - zookeeper
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env.nodeC
+    networks:
+      - raftnet
+    restart: always
+
+volumes:
+  postgres_data:
+
+networks:
+  raftnet:
+    driver: bridge

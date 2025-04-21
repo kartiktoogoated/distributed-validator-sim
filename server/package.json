@@ -1,0 +1,46 @@
+{
+  "name": "distributed-validator-sim",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "generate": "pnpx prisma generate",
+    "build": "pnpm run generate && tsc",
+    "start": "ts-node src/routes/api/v1/server.ts",
+    "simulate": "ts-node src/main.ts",
+    "cli": "ts-node src/cli.ts",
+    "migrate": "pnpx prisma migrate dev --name init"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.6.3",
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.1",
+    "@types/jsonwebtoken": "^9.0.9",
+    "@types/node": "^22.14.0",
+    "prisma": "6.5.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "@prisma/client": "6.5.0",
+    "@types/body-parser": "^1.19.5",
+    "@types/nodemailer": "^6.4.17",
+    "@types/ws": "^8.18.1",
+    "axios": "^1.8.4",
+    "bcryptjs": "^3.0.2",
+    "body-parser": "^2.2.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "ethers": "^6.13.5",
+    "express": "^5.1.0",
+    "express-rate-limit": "^7.5.0",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "kafkajs": "^2.2.4",
+    "nodemailer": "^6.10.0",
+    "ws": "^8.18.1"
+  }
+}
