@@ -2,44 +2,38 @@
 FROM node:18-alpine AS builder
 WORKDIR /app
 
-# Pin pnpm to your workspace version
+# Pin PNPM to the same version you're using locally
 RUN corepack enable && corepack prepare pnpm@10.6.3 --activate
 
-# Copy monorepo root manifests
+# Copy root manifests (including turbo.json for monorepo)
 COPY package.json pnpm-lock.yaml turbo.json ./
-
-# Copy everything (so both packages/db and apps/server come along)
 COPY . .
 
 # Install all workspaces
 RUN pnpm install --frozen-lockfile
 
-# Generate Prisma client from your DB package schema
+# Generate Prisma client (inside your db package)
 WORKDIR /app/packages/db
-RUN pnpm prisma generate --schema=./schema.prisma
+RUN pnpm prisma generate
 
 # Build your server app
 WORKDIR /app/apps/server
 RUN pnpm run build
 
-# 2) Runtime image
-FROM node:18-alpine AS run
+# 2) Runtime stage
+FROM node:18-alpine AS runner
 WORKDIR /app
 
-# Pin same pnpm
+# Pin the same PNPM version at runtime, so the lockfile works
 RUN corepack enable && corepack prepare pnpm@10.6.3 --activate
 
-# Copy compiled server
+# Copy the compiled server code
 COPY --from=builder /app/apps/server/dist ./dist
 
-# Copy hoisted dependencies (including @prisma/client and its .prisma folder)
+# Copy the full hoisted node_modules (includes @prisma/client and its .prisma)
 COPY --from=builder /app/node_modules ./node_modules
 
-# Copy Prisma runtime artifacts (they live under root node_modules)
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
-
-# Copy package.json for healthchecks, etc
+# Copy minimal package files (for health checks / metadata)
 COPY apps/server/package.json ./
 COPY pnpm-lock.yaml ./
 
