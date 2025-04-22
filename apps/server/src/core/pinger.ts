@@ -1,14 +1,14 @@
-import { WebSocketServer } from "ws";
-import { info } from "../../utils/logger";
-import prisma from "../prismaClient"; 
-import { Validator, Status, Vote } from "./Validator";
-import { safeSendMessage } from "../services/producer";
 import dotenv from 'dotenv';
-
 dotenv.config();
 
-// no more TOTAL_VALIDATORS here
+import { WebSocketServer } from "ws";
+import { info } from "../../utils/logger";
+import prisma from "../prismaClient";
+import { Validator, Status, Vote } from "./Validator";
+import { sendToTopic } from "../services/producer";
+
 const PING_INTERVAL = 60_000;
+const STATUS_TOPIC = process.env.KAFKA_TOPIC ?? "validator-status";
 
 export async function pingAndBroadcast(
   wss: WebSocketServer,
@@ -44,24 +44,27 @@ export async function pingAndBroadcast(
 
     info(`Pinged ${targetUrl}: consensus ${consensus} at ${timeStamp}`);
 
+    // log individual vote
     await prisma.validatorLog.create({
       data: {
         validatorId: voteResult.validatorId,
         site: targetUrl,
         status: voteResult.status,
-        timestamp: new Date(),
+        timestamp: new Date(timeStamp),
       },
     });
 
+    // log overall consensus
     await prisma.validatorLog.create({
       data: {
         validatorId: 0,
         site: targetUrl,
         status: consensus,
-        timestamp: new Date(),
+        timestamp: new Date(timeStamp),
       },
     });
 
+    // broadcast over WebSocket
     const message = JSON.stringify(payload);
     wss.clients.forEach(client => {
       if (client.readyState === client.OPEN) {
@@ -70,12 +73,13 @@ export async function pingAndBroadcast(
       }
     });
 
-    await safeSendMessage("validator-status", message);
+    // publish to Kafka
+    await sendToTopic(STATUS_TOPIC, payload);
 
     return payload;
-  } catch (error) {
-    info(`Error during ping: ${error}`);
-    throw error;
+  } catch (err) {
+    info(`Error during ping: ${err}`);
+    throw err;
   }
 }
 
@@ -97,13 +101,14 @@ export function startPinger(wss: WebSocketServer) {
   }, PING_INTERVAL);
 }
 
-async function updateValidatorMetadata(
-  validatorId: number, 
-  isCorrect: boolean, 
-  responseTime: number, 
+export async function updateValidatorMetadata(
+  validatorId: number,
+  isCorrect: boolean,
+  responseTime: number,
   wasSuccessful: boolean
 ): Promise<void> {
   const current = await prisma.validatorMeta.findUnique({ where: { validatorId } });
+
   if (current) {
     const newTotal = current.totalVotes + 1;
     const newCorrect = current.correctVotes + (isCorrect ? 1 : 0);
@@ -113,6 +118,7 @@ async function updateValidatorMetadata(
     const latencyScore = 1 - Math.min(newLatency / 5000, 1);
     const uptimeScore = newUptime / 100;
     const newWeight = (accuracyRatio * 0.5) + (latencyScore * 0.3) + (uptimeScore * 0.2);
+
     await prisma.validatorMeta.update({
       where: { validatorId },
       data: {
@@ -126,7 +132,11 @@ async function updateValidatorMetadata(
   } else {
     const accuracyRatio = isCorrect ? 1 : 0;
     const uptime = wasSuccessful ? 100 : 0;
-    const weight = (accuracyRatio * 0.5) + ((wasSuccessful ? 1 : 0) * 0.2) + (1 - Math.min(responseTime / 5000, 1) * 0.3);
+    const weight =
+      (accuracyRatio * 0.5) +
+      ((wasSuccessful ? 1 : 0) * 0.2) +
+      (1 - Math.min(responseTime / 5000, 1) * 0.3);
+
     await prisma.validatorMeta.create({
       data: {
         validatorId,

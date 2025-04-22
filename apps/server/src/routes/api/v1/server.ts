@@ -11,7 +11,7 @@ import authRouter from "./auth";
 import websiteRouter from "./website";
 import createSimulationRouter from "./simulation";
 import createStatusRouter from "./status";
-import { initProducer } from "../../../services/producer";
+import { startKafkaProducer } from "../../../services/producer"; 
 import { RaftNode } from "../../../core/raft";
 import { initRaftRouter } from "./raftServer";
 
@@ -31,18 +31,18 @@ const wss = new WebSocketServer({ server });
 
 // ── Raft setup ─────────────────────────
 if (!process.env.VALIDATOR_ID || !process.env.PEERS) {
-  throw new Error("Missing VALIDATOR_ID or PEERS in env");
+  throw new Error("Missing VALIDATOR_ID or PEERS in environment");
 }
 
 const nodeId = Number(process.env.VALIDATOR_ID);
-const peers = process.env.PEERS.split(",").map((s) =>
-  s.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "")
+const peers = process.env.PEERS.split(",").map(raw =>
+  raw.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "")
 );
 
-export const raft = new RaftNode(nodeId, peers, (committedCmd) => {
-  const msg = JSON.stringify({ type: "raft-commit", data: committedCmd });
-  wss.clients.forEach((client) => {
-    if (client.readyState === client.OPEN) client.send(msg);
+export const raft = new RaftNode(nodeId, peers, committedCommand => {
+  const message = JSON.stringify({ type: "raft-commit", data: committedCommand });
+  wss.clients.forEach(client => {
+    if (client.readyState === client.OPEN) client.send(message);
   });
 });
 
@@ -54,8 +54,8 @@ app.use(
   rateLimit({
     windowMs: 15 * 60_000,
     max: 100,
-    skip: (req) => req.path.startsWith("/api/raft"),
-    message: "Too many requests",
+    skip: req => req.path.startsWith("/api/raft"),
+    message: "Too many requests, please try again later",
   })
 );
 
@@ -66,16 +66,20 @@ app.use("/api/simulate", createSimulationRouter(wss));
 app.use("/api/status", createStatusRouter(wss));
 
 // ── Kafka producer ──────────────────────
-initProducer().catch((e) => logError(`Kafka init failed: ${e}`));
+startKafkaProducer().catch((initializationError: unknown) => {
+  logError(`Kafka initialization failed: ${initializationError}`);
+});
 
 // ── WS logging ──────────────────────────
-wss.on("connection", (ws) => {
-  info("WS client connected");
-  ws.on("message", (msg) => {
-    info(`WS msg: ${msg}`);
-    ws.send(`Echo: ${msg}`);
+wss.on("connection", wsClient => {
+  info("WebSocket client connected");
+  wsClient.on("message", message => {
+    info(`Received WS message: ${message}`);
+    wsClient.send(`Echo: ${message}`);
   });
-  ws.on("error", (err) => logError(`WS error: ${err}`));
+  wsClient.on("error", (socketError: Error) => {
+    logError(`WebSocket client error: ${socketError.message}`);
+  });
 });
 
 // ── Start server ────────────────────────
