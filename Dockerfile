@@ -1,41 +1,30 @@
-# 1) Builder stage
+# 1) Builder
 FROM node:18-alpine AS builder
 WORKDIR /app
 
-# Pin PNPM to the same version you're using locally
 RUN corepack enable && corepack prepare pnpm@10.6.3 --activate
 
-# Copy root manifests (including turbo.json for monorepo)
-COPY package.json pnpm-lock.yaml turbo.json ./
+# monorepo manifests
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
 COPY . .
 
-# Install all workspaces
 RUN pnpm install --frozen-lockfile
 
-# Generate Prisma client (inside your db package)
 WORKDIR /app/packages/db
 RUN pnpm prisma generate
 
-# Build your server app
 WORKDIR /app/apps/server
 RUN pnpm run build
 
-# 2) Runtime stage
+
+# 2) Runner
 FROM node:18-alpine AS runner
 WORKDIR /app
 
-# Pin the same PNPM version at runtime, so the lockfile works
-RUN corepack enable && corepack prepare pnpm@10.6.3 --activate
-
-# Copy the compiled server code
-COPY --from=builder /app/apps/server/dist ./dist
-
-# Copy the full hoisted node_modules (includes @prisma/client and its .prisma)
-COPY --from=builder /app/node_modules ./node_modules
-
-# Copy minimal package files (for health checks / metadata)
-COPY apps/server/package.json ./
-COPY pnpm-lock.yaml ./
+# grab *everything* you built in the previous stage
+COPY --from=builder /app . 
 
 EXPOSE 3000
-CMD ["node", "dist/src/routes/api/v1/server.js"]
+
+# point directly at your built server entrypoint
+CMD ["node", "apps/server/dist/src/routes/api/v1/server.js"]

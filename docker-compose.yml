@@ -42,45 +42,6 @@ services:
     networks:
       - raftnet
 
-  # Node A (Windows) — not started on Mac
-  # validator_a:
-  #   image: validator
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile
-  #   container_name: validator_a
-  #   depends_on:
-  #     - db
-  #     - kafka
-  #     - zookeeper
-  #   ports:
-  #     - "3000:3000"
-  #   env_file:
-  #     - .env.nodeA
-  #   networks:
-  #     - raftnet
-  #   restart: always
-
-  # Node B (Windows) — not started on Mac
-  # validator_b:
-  #   image: validator
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile
-  #   container_name: validator_b
-  #   depends_on:
-  #     - db
-  #     - kafka
-  #     - zookeeper
-  #   ports:
-  #     - "3001:3000"
-  #   env_file:
-  #     - .env.nodeB
-  #   networks:
-  #     - raftnet
-  #   restart: always
-
-  # Node C (Mac)
   validator_c:
     image: validator
     build:
@@ -93,8 +54,13 @@ services:
       - zookeeper
     ports:
       - "3000:3000"
+    # Load all vars (including KAFKA_BOOTSTRAP_SERVERS/CLIENT_ID) from .env.nodeC
     env_file:
       - .env.nodeC
+    # If you ever want to override or hard‑code in Compose, do it here:
+    # environment:
+    #   KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+    #   KAFKA_CLIENT_ID:      "validator_c"
     networks:
       - raftnet
     restart: always
