@@ -92,8 +92,8 @@ export default function createSimulationRouter(ws: WebSocketServer): Router {
       }
 
       const msg = JSON.stringify(payload);
-      ws.clients.forEach(c => {
-        if (c.readyState === c.OPEN) c.send(msg);
+      ws.clients.forEach(client => {
+        if (client.readyState === client.OPEN) client.send(msg);
       });
     } catch (err) {
       logError(`Simulation error: ${err}`);

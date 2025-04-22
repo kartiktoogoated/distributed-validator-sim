@@ -3,7 +3,7 @@ import prisma from "../prismaClient";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { info } from "../../utils/logger";
-import { sendOtpEmail } from "../services/email.service";
+import { sendOtpEmail } from "../services/otp.service";
 
 const JWT_SECRET = process.env.JWT_SECRET!;
 

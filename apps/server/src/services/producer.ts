@@ -1,52 +1,33 @@
-import { Kafka } from "kafkajs";
-import { info } from "../../utils/logger";
+import { Kafka, Partitioners, logLevel } from "kafkajs";
+import { info, warn, error } from "../../utils/logger";
+import { kafkaBrokerList, kafkaConfig } from "../config/kafkaConfig";
 
-// 1) Grab your broker(s) from the env var (set via .env.docker / docker-compose)
-const brokerEnv = process.env.KAFKA_BROKER;
-if (!brokerEnv) {
-  throw new Error("Missing KAFKA_BROKER env var");
+export interface LogEntry {
+  validatorId: number;
+  url: string;
+  status: "UP" | "DOWN";
+  latencyMs: number;
+  timestamp: string;
 }
-// support comma‑separated list if you ever need multiple brokers
-const brokers = brokerEnv.split(",").map((b) => b.trim());
 
-// 2) Construct Kafka client with the real brokers
-const kafka = new Kafka({
-  clientId: "validator-sim",
-  brokers,
-  // Uncomment to silence the v2 partitioner warning if you like:
-  // logCreator: () => ({}),
-  // createPartitioner: Partitioners.LegacyPartitioner,
+export interface AlertEntry extends LogEntry {
+  userId: number;
+}
+
+const kafkaClient = new Kafka({
+  clientId: kafkaConfig.KAFKA_CLIENT_ID,
+  brokers: kafkaBrokerList,
+  logLevel: logLevel.INFO,
 });
 
-export const producer = kafka.producer();
+export const kafkaProducer = kafkaClient.producer();
 
-export async function initProducer(): Promise<void> {
-  await producer.connect();
-  info(`Kafka producer connected to ${brokers.join(",")}`);
-}
-
-export async function sendMessage(topic: string, message: string): Promise<void> {
-  await producer.send({
-    topic,
-    messages: [{ value: message }],
-  });
-}
-
-export async function safeSendMessage(
-  topic: string,
-  message: string
-): Promise<void> {
+export async function startKafkaProducer(): Promise<void> {
   try {
-    await sendMessage(topic, message);
+    await kafkaProducer.connect();
+    info(`Kafka producer connected to: ${kafkaBrokerList.join(", ")}`);
   } catch (err) {
-    info(`Kafka send failed, retrying in 5s: ${err}`);
-    setTimeout(async () => {
-      try {
-        await sendMessage(topic, message);
-        info(`Retry succeeded for topic ${topic}`);
-      } catch (retryErr) {
-        info(`Retry still failed for topic ${topic}: ${retryErr}`);
-      }
-    }, 5000);
+    error(`Failed to connect Kafka producer: ${err}`);
+    process.exit(1);
   }
 }

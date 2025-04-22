@@ -41,8 +41,8 @@ const peers = process.env.PEERS.split(",").map((s) =>
 
 export const raft = new RaftNode(nodeId, peers, (committedCmd) => {
   const msg = JSON.stringify({ type: "raft-commit", data: committedCmd });
-  wss.clients.forEach((c) => {
-    if (c.readyState === c.OPEN) c.send(msg);
+  wss.clients.forEach((client) => {
+    if (client.readyState === client.OPEN) client.send(msg);
   });
 });
 
