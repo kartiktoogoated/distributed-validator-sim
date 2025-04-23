@@ -59,7 +59,10 @@ export default function createSimulationRouter(
     async (req, res, next): Promise<any> => {
       try {
         const { site, vote, validatorId, responseTime, timeStamp, location } = req.body;
-        // validation omitted for brevity...
+        // basic validation...
+        if (!site || !validatorId || !vote || (vote.status !== "UP" && vote.status !== "DOWN")) {
+          return res.status(400).send("Malformed gossip payload");
+        }
         validatorInstance.receiveGossip(site, vote, validatorId);
         info(`🔄 Gossip from ${validatorId}@${location} for ${site}: ${vote.status}`);
         return res.sendStatus(204);
@@ -75,7 +78,9 @@ export default function createSimulationRouter(
     "/",
     async (req, res, next): Promise<any> => {
       try {
-        if (typeof req.query.url === "string") monitoredUrl = req.query.url;
+        if (typeof req.query.url === "string") {
+          monitoredUrl = req.query.url;
+        }
 
         if (!isLoopRunning) {
           setInterval(executeSimulationRound, PING_INTERVAL_MS);
@@ -83,7 +88,7 @@ export default function createSimulationRouter(
           info(`🔁 Simulation loop started for Validator ${localValidatorId}`);
         }
 
-        // get back the full payload
+        // run one round immediately and return its payload
         const payload = await executeSimulationRound();
         return res.json({ success: true, ...payload });
       } catch (err) {
@@ -93,7 +98,7 @@ export default function createSimulationRouter(
     }
   );
 
-  // 3) core loop: returns the payload that we’ll send to WS / REST / Kafka
+  // 3) core loop: ping → seed Validator → log → gossip → consensus → raft → ws
   async function executeSimulationRound(): Promise<{
     url: string;
     consensus: Status;
@@ -108,7 +113,14 @@ export default function createSimulationRouter(
 
     info(`[Ping] Validator ${localValidatorId}@${localLocation} → ${monitoredUrl}: ${vote.status} (${latency}ms)`);
 
-    // b) persist
+    // **NEW**: make sure the Validator record exists before we write its log
+    await prisma.validator.upsert({
+      where: { id: localValidatorId },
+      update: { location: localLocation },
+      create: { id: localValidatorId, location: localLocation },
+    });
+
+    // b) persist the raw ping
     await prisma.validatorLog.create({
       data: {
         validatorId: localValidatorId,
@@ -125,9 +137,9 @@ export default function createSimulationRouter(
       localLocation
     ).runGossipRounds(monitoredUrl, latency, timeStamp);
 
-    // d) compute majority
-    const total    = peerAddresses.length + 1;
-    const quorum   = Math.ceil(total / 2);
+    // d) compute majority consensus
+    const total           = peerAddresses.length + 1;
+    const quorum          = Math.ceil(total / 2);
     const consensusStatus = new Hub(
       [validatorInstance],
       quorum

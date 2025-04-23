@@ -1,10 +1,11 @@
+// apps/server/src/routes/api/v1/logs.ts
 import { Router, Request, Response } from "express";
 import prisma from "../../../prismaClient";
 
 export default function createLogsRouter(): Router {
   const router = Router();
 
-  router.get("/logs", async (_req: Request, res: Response) => {
+  router.get("/", async (_req: Request, res: Response) => {
     try {
       const logs = await prisma.validatorLog.findMany({
         include: {
@@ -15,16 +16,17 @@ export default function createLogsRouter(): Router {
         orderBy: { timestamp: "desc" },
       });
 
-      // return the logs plus region
+      // return the logs plus region and latency
       res.json({
         success: true,
-        logs: logs.map((l) => ({
-          id:           l.id,
-          validatorId:  l.validatorId,
-          region:       l.validator.location,
-          site:         l.site,
-          status:       l.status,
-          timestamp:    l.timestamp,
+        logs: logs.map((log: any) => ({
+          id:           log.id,
+          validatorId:  log.validatorId,
+          region:       log.validator.location,
+          site:         log.site,
+          status:       log.status,
+          latency:      log.latency,       // new field
+          timestamp:    log.timestamp,
         })),
       });
     } catch (err: any) {
