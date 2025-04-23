@@ -4,41 +4,32 @@ import prisma from "../../../prismaClient";
 export default function createLogsRouter(): Router {
   const router = Router();
 
-  /**
-   * GET /api/logs
-   * Optional query params:
-   *   - limit (number of entries, default 100)
-   *   - site  (filter by site URL)
-   */
-  router.get("/", async (req: Request, res: Response) => {
-    const limit = parseInt(req.query.limit as string, 10) || 100;
-    const siteFilter = typeof req.query.site === "string" ? req.query.site : undefined;
+  router.get("/logs", async (_req: Request, res: Response) => {
+    try {
+      const logs = await prisma.validatorLog.findMany({
+        include: {
+          validator: {
+            select: { location: true },
+          },
+        },
+        orderBy: { timestamp: "desc" },
+      });
 
-    const where = siteFilter
-      ? { site: siteFilter }
-      : {};
-
-    const entries = await prisma.validatorLog.findMany({
-      where,
-      orderBy: { timestamp: "desc" },
-      take: limit,
-      include: {
-        validator: {
-          select: { location: true }
-        }
-      }
-    });
-
-    // map into a friendlier shape
-    const result = entries.map((e) => ({
-      site:         e.site,
-      status:       e.status,
-      timestamp:    e.timestamp.toISOString(),
-      validatorId:  e.validatorId,
-      location:     e.validatorId === 0 ? "consensus" : e.validator?.location ?? "unknown"
-    }));
-
-    res.json({ success: true, data: result });
+      // return the logs plus region
+      res.json({
+        success: true,
+        logs: logs.map((l) => ({
+          id:           l.id,
+          validatorId:  l.validatorId,
+          region:       l.validator.location,
+          site:         l.site,
+          status:       l.status,
+          timestamp:    l.timestamp,
+        })),
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
   });
 
   return router;

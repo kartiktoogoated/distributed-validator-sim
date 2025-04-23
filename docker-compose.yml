@@ -42,25 +42,40 @@ services:
     networks:
       - raftnet
 
-  validator_c:
-    image: validator
+  # ── Aggregator (Node A) ──────────────────────────────────────────────────────
+  aggregator:
     build:
       context: .
       dockerfile: Dockerfile
+      target: runner     # use the final “runner” stage from your multi-stage Dockerfile
+    container_name: aggregator
+    depends_on:
+      - db
+      - kafka
+      - zookeeper
+    ports:
+      - "3000:3000"     # maps host 3000 → container’s PORT
+    env_file:
+      - .env.aggregator
+    networks:
+      - raftnet
+    restart: always
+
+  # ── Validator C (Node C) ─────────────────────────────────────────────────────
+  validator_c:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
     container_name: validator_c
     depends_on:
       - db
       - kafka
       - zookeeper
     ports:
-      - "3000:3000"
-    # Load all vars (including KAFKA_BOOTSTRAP_SERVERS/CLIENT_ID) from .env.nodeC
+      - "3002:3002"   
     env_file:
       - .env.nodeC
-    # If you ever want to override or hard‑code in Compose, do it here:
-    # environment:
-    #   KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
-    #   KAFKA_CLIENT_ID:      "validator_c"
     networks:
       - raftnet
     restart: always
