@@ -1,21 +1,22 @@
+import dotenv from "dotenv";
+dotenv.config();
+
 import express from "express";
 import cors from "cors";
-import http from "http";
-import { WebSocketServer } from "ws";
-import dotenv from "dotenv";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
+import http from "http";
+import { WebSocketServer } from "ws";
 
 import { info, error as logError } from "../../../../utils/logger";
-import authRouter from "./auth";
-import websiteRouter from "./website";
+import authRouter       from "./auth";
+import websiteRouter    from "./website";
 import createSimulationRouter from "./simulation";
-import createStatusRouter from "./status";
-import { startKafkaProducer } from "../../../services/producer"; 
-import { RaftNode } from "../../../core/raft";
-import { initRaftRouter } from "./raftServer";
-
-dotenv.config();
+import createStatusRouter     from "./status";
+import { startKafkaProducer } from "../../../services/producer";
+import { RaftNode }           from "../../../core/raft";
+import { initRaftRouter }     from "./raftServer";
+import createLogsRouter from "./logs";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -23,11 +24,11 @@ const PORT = Number(process.env.PORT) || 3000;
 // ── Security & parsing ─────────────────
 app.use(helmet());
 app.use(cors());
-app.use(express.json());
+app.use(express.json());  // global JSON parser
 
 // ── HTTP + WS setup ────────────────────
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
+const wss    = new WebSocketServer({ server });
 
 // ── Raft setup ─────────────────────────
 if (!process.env.VALIDATOR_ID || !process.env.PEERS) {
@@ -35,51 +36,48 @@ if (!process.env.VALIDATOR_ID || !process.env.PEERS) {
 }
 
 const nodeId = Number(process.env.VALIDATOR_ID);
-const peers = process.env.PEERS.split(",").map(raw =>
-  raw.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "")
+const peers  = process.env.PEERS.split(",").map(p =>
+  p.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "")
 );
 
-export const raft = new RaftNode(nodeId, peers, committedCommand => {
-  const message = JSON.stringify({ type: "raft-commit", data: committedCommand });
-  wss.clients.forEach(client => {
-    if (client.readyState === client.OPEN) client.send(message);
-  });
+export const raftNode = new RaftNode(nodeId, peers, (cmd) => {
+  const message = JSON.stringify({ type: "raft-commit", data: cmd });
+  wss.clients.forEach(c => c.readyState === c.OPEN && c.send(message));
 });
 
-// ── Raft RPC (no rate‑limit) ───────────
-app.use("/api/raft", initRaftRouter(raft));
+// ── Raft RPC (no rate-limit) ───────────
+app.use("/api/raft", initRaftRouter(raftNode));
 
-// ── Global rate‑limit ───────────────────
+// ── Global rate-limit ───────────────────
 app.use(
   rateLimit({
     windowMs: 15 * 60_000,
     max: 100,
-    skip: req => req.path.startsWith("/api/raft"),
+    skip: (req) => req.path.startsWith("/api/raft"),
     message: "Too many requests, please try again later",
   })
 );
 
 // ── Your routes ─────────────────────────
 app.use("/api/auth", authRouter);
-app.use("/api", websiteRouter);
+app.use("/api",     websiteRouter);
 app.use("/api/simulate", createSimulationRouter(wss));
-app.use("/api/status", createStatusRouter(wss));
+app.use("/api/status",   createStatusRouter(wss));
+app.use("/api/logs", createLogsRouter());
 
 // ── Kafka producer ──────────────────────
-startKafkaProducer().catch((initializationError: unknown) => {
-  logError(`Kafka initialization failed: ${initializationError}`);
+startKafkaProducer().catch((err) => {
+  logError(`Kafka init failed: ${err}`);
 });
 
 // ── WS logging ──────────────────────────
-wss.on("connection", wsClient => {
+wss.on("connection", (client) => {
   info("WebSocket client connected");
-  wsClient.on("message", message => {
-    info(`Received WS message: ${message}`);
-    wsClient.send(`Echo: ${message}`);
+  client.on("message", (m) => {
+    info(`WS message: ${m}`);
+    client.send(`Echo: ${m}`);
   });
-  wsClient.on("error", (socketError: Error) => {
-    logError(`WebSocket client error: ${socketError.message}`);
-  });
+  client.on("error", (e) => logError(`WS error: ${e.message}`));
 });
 
 // ── Start server ────────────────────────

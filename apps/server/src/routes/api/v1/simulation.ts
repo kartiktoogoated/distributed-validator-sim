@@ -1,129 +1,169 @@
-import { Router, Request, Response, NextFunction } from "express";
+import express, {
+  Router,
+  Request,
+  Response,
+  NextFunction,
+} from "express";
 import { WebSocketServer } from "ws";
 import { info, error as logError } from "../../../../utils/logger";
-import { Validator, Vote, Status } from "../../../core/Validator";
+import prisma from "../../../prismaClient";
+import {
+  Validator,
+  Vote,
+  Status,
+  GossipPayload,
+} from "../../../core/Validator";
 import { GossipManager } from "../../../core/GossipManager";
 import { Hub } from "../../../core/Hub";
-import prisma from "../../../prismaClient";
-import dotenv from "dotenv";
-import { raft } from "./server";
+import { RaftNode } from "../../../core/raft";
 
-dotenv.config();
+const GOSSIP_ROUNDS    = 3;
+const PING_INTERVAL_MS = Number(process.env.PING_INTERVAL_MS ?? 60000);
 
-const GOSSIP_ROUNDS = 3;
-const PING_INTERVAL = 60_000;
-
-const peerList = (process.env.PEERS || "")
+// parse peer addresses (host:port)
+const peerAddresses = (process.env.PEERS ?? "")
   .split(",")
-  .map(s => s.trim().replace(/^https?:\/\//, "").replace(/\/+$/, ""))
+  .map(h => h.trim().replace(/^https?:\/\//, "").replace(/\/+$/, ""))
   .filter(Boolean);
 
-export default function createSimulationRouter(ws: WebSocketServer): Router {
-  const router = Router();
-  let started = false;
-  let validator!: Validator;
-  let targetUrl = "";
+// local validator/raft IDs & region tag
+const localValidatorId = Number(process.env.VALIDATOR_ID);
+if (isNaN(localValidatorId)) throw new Error("VALIDATOR_ID must be a number");
+const localLocation = process.env.LOCATION ?? "unknown";
 
-  router.post("/gossip", (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const { site, vote: rawVote, fromId } = req.body as {
-        site: string;
-        vote: unknown;
-        fromId: number;
-      };
+// single Validator instance
+const validatorInstance = new Validator(localValidatorId);
+validatorInstance.peers = peerAddresses;
 
-      if (
-        typeof rawVote !== "object" ||
-        rawVote === null ||
-        typeof (rawVote as any).status !== "string" ||
-        typeof (rawVote as any).weight !== "number"
-      ) {
-        res.status(400).send("Malformed vote");
-        return;
-      }
-
-      const { status, weight } = rawVote as Vote;
-      if (status !== "UP" && status !== "DOWN") {
-        res.status(400).send("Invalid vote.status");
-        return;
-      }
-
-      validator.receiveGossip(site, { status, weight }, fromId);
-      res.sendStatus(200);
-    } catch (err) {
-      logError(`Gossip handler error: ${err}`);
-      next(err);
-    }
-  });
-
-  async function runSimulationRound() {
-    try {
-      const vote = await validator.checkWebsite(targetUrl);
-      await prisma.validatorLog.create({
-        data: {
-          validatorId: validator.id,
-          site: targetUrl,
-          status: vote.status,
-          timestamp: new Date(),
-        },
-      });
-      info(`Validator ${validator.id} voted: ${vote.status}`);
-
-      await new GossipManager([validator], GOSSIP_ROUNDS).runGossipRounds(targetUrl);
-
-      const totalNodes = peerList.length + 1;
-      const quorum = Math.ceil(totalNodes / 2);
-      const consensus = new Hub([validator], quorum).checkConsensus(targetUrl);
-
-      const ts = new Date().toISOString();
-      const votes = [
-        {
-          validatorId: validator.id,
-          status: validator.getStatus(targetUrl)?.status ?? "UNKNOWN",
-          weight: validator.getStatus(targetUrl)?.weight ?? 1,
-        },
-      ];
-      const payload = { url: targetUrl, consensus, votes, ts };
-
-      try {
-        raft.propose(payload);
-      } catch {
-        info("Not leader—skipping raft.propose");
-      }
-
-      const msg = JSON.stringify(payload);
-      ws.clients.forEach(client => {
-        if (client.readyState === client.OPEN) client.send(msg);
-      });
-    } catch (err) {
-      logError(`Simulation error: ${err}`);
-    }
+// Raft node for this VM
+const raftNode = new RaftNode(
+  localValidatorId,
+  peerAddresses,
+  committedCommand => {
+    info(`Raft committed command: ${JSON.stringify(committedCommand)}`);
   }
+);
 
-  router.get("/", async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      targetUrl =
-        (req.query.url as string) ||
-        process.env.DEFAULT_TARGET_URL! ||
-        "http://example.com";
+export default function createSimulationRouter(
+  wsServer: WebSocketServer
+): Router {
+  const router = Router();
+  router.use(express.json());
 
-      if (!started) {
-        const id = Number(process.env.VALIDATOR_ID);
-        if (isNaN(id)) throw new Error("VALIDATOR_ID must be a number");
-        validator = new Validator(id);
-        validator.peers = peerList;
-        setInterval(runSimulationRound, PING_INTERVAL);
-        started = true;
-        info(`Simulation loop started for Validator ${id}`);
+  let isLoopRunning = false;
+  let monitoredUrl   = process.env.DEFAULT_TARGET_URL ?? "http://example.com";
+
+  // 1) intake gossip from peers
+  router.post<{}, any, GossipPayload>(
+    "/gossip",
+    async (req, res, next): Promise<any> => {
+      try {
+        const { site, vote, validatorId, responseTime, timeStamp, location } = req.body;
+        // validation omitted for brevity...
+        validatorInstance.receiveGossip(site, vote, validatorId);
+        info(`🔄 Gossip from ${validatorId}@${location} for ${site}: ${vote.status}`);
+        return res.sendStatus(204);
+      } catch (err) {
+        logError(`Gossip handler error: ${err}`);
+        return next(err);
       }
-
-      await runSimulationRound();
-      res.json({ success: true, message: "Simulation kicked off", targetUrl });
-    } catch (err) {
-      logError(`GET / simulation error: ${err}`);
-      next(err);
     }
-  });
+  );
+
+  // 2) trigger one round (and start loop)
+  router.get(
+    "/",
+    async (req, res, next): Promise<any> => {
+      try {
+        if (typeof req.query.url === "string") monitoredUrl = req.query.url;
+
+        if (!isLoopRunning) {
+          setInterval(executeSimulationRound, PING_INTERVAL_MS);
+          isLoopRunning = true;
+          info(`🔁 Simulation loop started for Validator ${localValidatorId}`);
+        }
+
+        // get back the full payload
+        const payload = await executeSimulationRound();
+        return res.json({ success: true, ...payload });
+      } catch (err) {
+        logError(`GET /simulation error: ${err}`);
+        return next(err);
+      }
+    }
+  );
+
+  // 3) core loop: returns the payload that we’ll send to WS / REST / Kafka
+  async function executeSimulationRound(): Promise<{
+    url: string;
+    consensus: Status;
+    votes: Array<{ validatorId: number; status: Status; weight: number }>;
+    timeStamp: string;
+  }> {
+    // a) ping
+    const startTime = Date.now();
+    const vote      = await validatorInstance.checkWebsite(monitoredUrl);
+    const latency   = Date.now() - startTime;
+    const timeStamp = new Date().toISOString();
+
+    info(`[Ping] Validator ${localValidatorId}@${localLocation} → ${monitoredUrl}: ${vote.status} (${latency}ms)`);
+
+    // b) persist
+    await prisma.validatorLog.create({
+      data: {
+        validatorId: localValidatorId,
+        site:        monitoredUrl,
+        status:      vote.status,
+        timestamp:   new Date(timeStamp),
+      },
+    });
+
+    // c) gossip rounds
+    await new GossipManager(
+      [validatorInstance],
+      GOSSIP_ROUNDS,
+      localLocation
+    ).runGossipRounds(monitoredUrl, latency, timeStamp);
+
+    // d) compute majority
+    const total    = peerAddresses.length + 1;
+    const quorum   = Math.ceil(total / 2);
+    const consensusStatus = new Hub(
+      [validatorInstance],
+      quorum
+    ).checkConsensus(monitoredUrl) as Status;
+
+    info(`[Consensus] ${monitoredUrl} → ${consensusStatus} (${quorum}/${total})`);
+
+    // e) build payload
+    const payload = {
+      url:       monitoredUrl,
+      consensus: consensusStatus,
+      votes: [
+        {
+          validatorId: localValidatorId,
+          status:      validatorInstance.getStatus(monitoredUrl)!.status,
+          weight:      validatorInstance.getStatus(monitoredUrl)!.weight,
+        },
+      ],
+      timeStamp,
+    };
+
+    // f) Raft propose
+    try {
+      raftNode.propose(payload);
+    } catch {
+      info("Not Raft leader—skipping propose");
+    }
+
+    // g) WS broadcast
+    const msg = JSON.stringify(payload);
+    wsServer.clients.forEach(c => {
+      if (c.readyState === c.OPEN) c.send(msg);
+    });
+
+    return payload;
+  }
 
   return router;
 }

@@ -6,74 +6,96 @@ import { kafkaBrokerList } from "../config/kafkaConfig";
 import { mailConfig } from "../config/mailConfig";
 
 export async function startAlertService(): Promise<void> {
-    const kafkaClient = new Kafka({
-        clientId: "alert-service",
-        brokers: kafkaBrokerList,
-        logLevel: logLevel.INFO,
-    });
-    const consumer = kafkaClient.consumer({ groupId: "alert-service" });
+  const kafkaClient = new Kafka({
+    clientId: "alert-service",
+    brokers: kafkaBrokerList,
+    logLevel: logLevel.INFO,
+  });
+  const consumer = kafkaClient.consumer({ groupId: "alert-service" });
 
-    // connect & subscribe
-    await consumer.connect();
-    info(`Alert service connected to Kafka`);
-    await consumer.subscribe({ topic: "health-alerts", fromBeginning: false });
+  // connect & subscribe
+  await consumer.connect();
+  info(`Alert service connected to Kafka`);
+  const topic = process.env.VALIDATOR_STATUS_TOPIC ?? "validator-status";
+  await consumer.subscribe({ topic, fromBeginning: false });
+  info(`Subscribed to topic '${topic}'`);
 
-    // prepare mailer
-    const transporter = nodemailer.createTransport({
-        host: mailConfig.SMTP_HOST,
-        port: mailConfig.SMTP_PORT,
-        secure: mailConfig.SMTP_SECURE,
-        auth: {
-            user: mailConfig.SMTP_USER,
-            pass: mailConfig.SMTP_PASS,
-        },
-    });
+  // prepare mailer
+  const transporter = nodemailer.createTransport({
+    host: mailConfig.SMTP_HOST,
+    port: mailConfig.SMTP_PORT,
+    secure: mailConfig.SMTP_SECURE,
+    auth: {
+      user: mailConfig.SMTP_USER,
+      pass: mailConfig.SMTP_PASS,
+    },
+  });
 
-    await consumer.run({
-        eachMessage: async ({ message }) => {
-            try {
-                const alert= JSON.parse(message.value!.toString()) as {
-                    userId: string;
-                    url: string;
-                    status: string;
-                    timestamp: string;
-                };
+  await consumer.run({
+    eachMessage: async ({ message }) => {
+      try {
+        // parse the consensus payload
+        const payload = JSON.parse(message.value!.toString()) as {
+          url: string;
+          consensus: "UP" | "DOWN";
+          votes: Array<{
+            validatorId: number;
+            status: "UP" | "DOWN";
+            weight: number;
+            responseTime: number;
+            location: string;
+          }>;
+          timeStamp: string;
+        };
 
-                // lookup user
-                const userRecord = await prisma.user.findUnique({ where: { id: alert.userId } });
-                if (!userRecord?.email) {
-                    warn(`No email found for user${alert.userId}, skippinh alert`);
-                    return;
-                }
+        // find the website→user so we know who to email
+        const siteRecord = await prisma.website.findUnique({
+          where: { url: payload.url },
+          select: { user: { select: { email: true } } },
+        });
+        const userEmail = siteRecord?.user.email;
+        if (!userEmail) {
+          warn(`No user/email found for site '${payload.url}', skipping alerts.`);
+          return;
+        }
 
-                // send email
-                await transporter.sendMail({
-                    from : mailConfig.MAIL_FROM,
-                    to: userRecord.email,
-                    subject: `Site Down: ${alert.url}`,
-                    text: `
-                    Hello ${userRecord.email},
-                    
-                    Your monitoredsite (${alert.url}) reported DOWN at ${alert.timestamp}.
-                    
-                    Please check immediately.
-                    
-                    -Uptime Monitor
-                        `.trim(),
-                });
+        // send one email per DOWN vote (location‑aware)
+        for (const v of payload.votes.filter((v) => v.status === "DOWN")) {
+          const subject = `ALERT: ${payload.url} DOWN in ${v.location}`;
+          const text = `
+Hello,
 
-                info(`Alert cmailed to ${userRecord.email}`);
-            } catch (err) {
-                error(`Error processing alert message: ${err}`);
-            }
-        },
-    });
+Your monitored site (${payload.url}) reported DOWN at ${payload.timeStamp}.
+  
+• Validator ID: ${v.validatorId}  
+• Location: ${v.location}  
+• Response time: ${v.responseTime} ms  
+• Overall consensus: ${payload.consensus}  
+
+Please investigate.
+
+— Uptime Monitor
+`.trim();
+
+          await transporter.sendMail({
+            from: mailConfig.MAIL_FROM,
+            to: userEmail,
+            subject,
+            text,
+          });
+          info(`Sent DOWN alert for ${payload.url} @ ${v.location} to ${userEmail}`);
+        }
+      } catch (err: any) {
+        error(`Error processing alert message: ${err.stack || err}`);
+      }
+    },
+  });
 }
 
-// Start the service when this module is run directly
+// If run directly, start the service
 if (require.main === module) {
-    startAlertService().catch((err) => {
-        error(`Fatal error starting alert service: ${err}`);
-        process.exit(1);
-    });
+  startAlertService().catch((err) => {
+    error(`Fatal error starting alert service: ${err.stack || err}`);
+    process.exit(1);
+  });
 }
