@@ -1,16 +1,32 @@
-import prisma from "./prismaClient";
+import { PrismaClient } from "@prisma/client";
+const prisma = new PrismaClient();
 
-async function fetchLogs(): Promise<void> {
-  try {
-    const logs = await prisma.validatorLog.findMany({
-      orderBy: { timestamp: 'desc' },
-    });
-    console.table(logs);
-    process.exit(0);
-  } catch (error: any) {
-    console.error(`Error fetching logs: ${error.message}`);
-    process.exit(1);
-  }
+async function main(): Promise<void> {
+  const logs = await prisma.validatorLog.findMany({
+    include: { validator: { select: { id: true, location: true } } },
+    orderBy: { timestamp: "desc" },
+  });
+
+  console.log("\n📋 Detailed Validator Logs:");
+  console.table(
+    logs.map((l) => ({
+      id:           l.id,
+      validatorId:  l.validatorId,
+      region:       l.validator.location,
+      site:         l.site,
+      status:       l.status,
+      timestamp:    l.timestamp.toISOString(),
+    }))
+  );
+
+  // … the rest of your summaries, as you already wrote …
 }
 
-fetchLogs();
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
+  .finally(() => {
+    prisma.$disconnect();
+  });
