@@ -19,7 +19,6 @@ async function main(): Promise<void> {
     }))
   );
 
-  // … the rest of your summaries, as you already wrote …
 }
 
 main()

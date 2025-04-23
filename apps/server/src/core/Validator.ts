@@ -1,56 +1,105 @@
-import axios from "axios";
-import { info } from "../../utils/logger";
+import axios from 'axios';
+import { info } from '../../utils/logger';
 
-export type Status = "UP" | "DOWN";
-export interface Vote { status: Status; weight: number; }
+export type Status = 'UP' | 'DOWN';
+
+export interface Vote {
+  status: Status;
+  weight: number;
+}
+
+export interface GossipPayload {
+  site:         string;
+  vote:         Vote;
+  validatorId:  number;
+  responseTime: number;
+  timeStamp:    string;
+  location:     string;
+}
 
 export class Validator {
-  public id: number;
-  private statusMap = new Map<string, Vote>();
+  public readonly id: number;
   public peers: string[] = [];
+  private lastVotes = new Map<string, Vote>();
 
-  constructor(id: number) {
-    this.id = id;
+  constructor(validatorId: number) {
+    this.id = validatorId;
   }
 
-  public async checkWebsite(site: string): Promise<Vote> {
+  /**
+   * Ping the site and record a vote (UP or DOWN), logging the result.
+   */
+  public async checkWebsite(siteUrl: string): Promise<Vote> {
+    const startTime = Date.now();
+    let vote: Vote;
+
     try {
-      const res = await axios.get(site, { timeout: 5000 });
-      const status: Status = res.status >= 200 && res.status < 400 ? "UP" : "DOWN";
-      const vote: Vote = { status, weight: 1 };
-      this.statusMap.set(site, vote);
-      return vote;
+      const response = await axios.get(siteUrl, { timeout: 5000 });
+      const status: Status =
+        response.status >= 200 && response.status < 400 ? 'UP' : 'DOWN';
+      vote = { status, weight: 1 };
     } catch {
-      const vote: Vote = { status: "DOWN", weight: 1 };
-      this.statusMap.set(site, vote);
-      return vote;
+      vote = { status: 'DOWN', weight: 1 };
     }
+
+    const latency = Date.now() - startTime;
+    this.lastVotes.set(siteUrl, vote);
+    info(`📡 Validator ${this.id} pinged ${siteUrl}: ${vote.status} (latency ${latency}ms)`);
+    return vote;
   }
 
-  public async gossip(site: string): Promise<void> {
-    const currentVote = this.statusMap.get(site);
-    if (!currentVote) return;
+  /**
+   * Gossip your last vote for siteUrl to all peers, with a bit of jitter.
+   */
+  public gossip(
+    siteUrl: string,
+    responseTime: number,
+    timeStamp: string,
+    location: string
+  ): void {
+    const vote = this.lastVotes.get(siteUrl);
+    if (!vote) return;
 
+    // Simulate ~20% dropped messages
     if (Math.random() < 0.2) return;
 
-    const jitter = Math.floor(Math.random() * 300) + 100;
+    const jitterMs = Math.floor(Math.random() * 300) + 100;
     setTimeout(() => {
-      for (const peer of this.peers) {
-        const url = `http://${peer}/api/simulate/gossip`;
+      const payload: GossipPayload = {
+        site:         siteUrl,
+        vote,
+        validatorId:  this.id,
+        responseTime,
+        timeStamp,
+        location,
+      };
+
+      this.peers.forEach((peerAddress) => {
         axios
-          .post(url, { site, vote: currentVote, fromId: this.id }, { timeout: 3000 })
-          .then(() => info(`Validator ${this.id} → ${peer}: ${currentVote.status}`))
-          .catch(err => info(`Validator ${this.id} fail → ${peer}: ${err.message}`));
-      }
-    }, jitter);
+          .post(`http://${peerAddress}/api/simulate/gossip`, payload, { timeout: 3000 })
+          .then(() => info(`🔗 Validator ${this.id} → ${peerAddress}: ${vote.status}`))
+          .catch((err) =>
+            info(`❌ Validator ${this.id} failed to gossip to ${peerAddress}: ${err.message}`)
+          );
+      });
+    }, jitterMs);
   }
 
-  public receiveGossip(site: string, vote: Vote, fromId: number): void {
-    this.statusMap.set(site, vote);
-    info(`Validator ${this.id} got gossip from ${fromId} for ${site}: ${vote.status}`);
+  /**
+   * Merge in a vote you received from a peer.
+   */
+  public receiveGossip(siteUrl: string, vote: Vote, fromValidatorId: number): void {
+    this.lastVotes.set(siteUrl, vote);
+    info(
+      `🔄 Validator ${this.id} received gossip from ${fromValidatorId}` +
+      ` for ${siteUrl}: ${vote.status}`
+    );
   }
 
-  public getStatus(site: string): Vote | undefined {
-    return this.statusMap.get(site);
+  /**
+   * Get the last vote recorded for a given site.
+   */
+  public getStatus(siteUrl: string): Vote | undefined {
+    return this.lastVotes.get(siteUrl);
   }
 }
