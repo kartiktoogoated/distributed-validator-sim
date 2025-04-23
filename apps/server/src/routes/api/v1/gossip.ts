@@ -1,26 +1,66 @@
-import { Router, Request, Response } from "express";
+import express, {
+  Router,
+  Request,
+  Response,
+  NextFunction,
+} from "express";
 import { info } from "../../../../utils/logger";
-import { Validator, Vote } from "../../../core/Validator"; // fix path if needed
+import {
+  Validator,
+  Vote,
+  GossipPayload,
+} from "../../../core/Validator";
 
-const gossipRouter = Router();
-let localValidator: Validator;
-
-/**
- * Call this from server.ts to wire up your validator and
- * return the Router for Express.
- */
 export function initGossipRouter(validator: Validator): Router {
-  localValidator = validator;
-  return gossipRouter;
-}
+  const router = Router();
 
-gossipRouter.post("/gossip", (req: Request, res: Response) => {
-  const { site, vote, fromId } = req.body as {
-    site: string;
-    vote: Vote;
-    fromId: number;
-  };
-  localValidator.receiveGossip(site, vote, fromId);
-  info(`Gossip received from ${fromId} for ${site}`);
-  res.json({ success: true });
-});
+  // JSON body parser
+  router.use(express.json());
+
+  // POST /api/simulate/gossip
+  //   <Params={}, ResBody=any, ReqBody=GossipPayload>
+  router.post<{}, any, GossipPayload>(
+    "/gossip",
+    async (
+      req: Request<{}, any, GossipPayload>,
+      res: Response
+    ): Promise<any> => {
+      const {
+        site,
+        validatorId,
+        responseTime,
+        timeStamp,
+        location,
+        vote,
+      } = req.body;
+
+      // Basic validation
+      if (
+        typeof site         !== "string"  ||
+        typeof validatorId  !== "number"  ||
+        typeof responseTime !== "number"  ||
+        typeof timeStamp    !== "string"  ||
+        typeof location     !== "string"  ||
+        typeof vote         !== "object"  
+      ) {
+        return res.status(400).send("Malformed gossip payload");
+      }
+
+      if (vote.status !== "UP" && vote.status !== "DOWN") {
+        return res.status(400).send("Invalid vote.status");
+      }
+
+      // Merge into your Validator instance
+      validator.receiveGossip(site, vote as Vote, validatorId);
+
+      info(
+        `🔄 Gossip received from validator ${validatorId}` +
+        ` @${location} for ${site}: ${vote.status}`
+      );
+
+      return res.json({ success: true });
+    }
+  );
+
+  return router;
+}
