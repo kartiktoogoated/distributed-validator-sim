@@ -12,7 +12,7 @@ export default function createStatusRouter(ws: WebSocketServer) {
       const targetUrl =
         (req.query.url as string) ||
         process.env.DEFAULT_TARGET_URL ||
-        "http://example.com";
+        "http://google.com";
 
       // run a single checkWebsite() locally
       const validatorId = Number(process.env.VALIDATOR_ID);
