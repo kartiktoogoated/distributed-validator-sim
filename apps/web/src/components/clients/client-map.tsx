@@ -5,7 +5,6 @@ const ClientMap = () => {
   
   useEffect(() => {
     if (!mapContainerRef.current) return;
-    
     const container = mapContainerRef.current;
     const width = container.clientWidth;
     const height = container.clientHeight;
@@ -14,134 +13,109 @@ const ClientMap = () => {
     container.innerHTML = '';
     
     // Create SVG element
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('width', '100%');
-    svg.setAttribute('height', '100%');
-    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+    svg.setAttribute('width','100%');
+    svg.setAttribute('height','100%');
+    svg.setAttribute('viewBox',`0 0 ${width} ${height}`);
     container.appendChild(svg);
     
-    // Add a simplified world map (this is just a placeholder rectangle)
-    const map = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    map.setAttribute('x', '0');
-    map.setAttribute('y', '0');
-    map.setAttribute('width', width.toString());
-    map.setAttribute('height', height.toString());
-    map.setAttribute('fill', 'none');
-    svg.appendChild(map);
-    
-    // Sample validator locations - these would be actual lat/long coordinates converted to x,y in a real app
+    // Sample validator locations
     const locations = [
-      { x: width * 0.2, y: height * 0.35, name: 'North America', active: true },
-      { x: width * 0.45, y: height * 0.3, name: 'Europe', active: true },
-      { x: width * 0.65, y: height * 0.35, name: 'Asia', active: true },
-      { x: width * 0.3, y: height * 0.6, name: 'South America', active: true },
-      { x: width * 0.5, y: height * 0.6, name: 'Africa', active: true },
-      { x: width * 0.8, y: height * 0.7, name: 'Australia', active: false },
+      { x: width * 0.2,  y: height * 0.35, name: 'North America', active: true  },
+      { x: width * 0.45, y: height * 0.3,  name: 'Europe',        active: true  },
+      { x: width * 0.65, y: height * 0.35, name: 'Asia',          active: true  },
+      { x: width * 0.3,  y: height * 0.6,  name: 'South America', active: true  },
+      { x: width * 0.5,  y: height * 0.6,  name: 'Africa',        active: true  },
+      { x: width * 0.8,  y: height * 0.7,  name: 'Australia',     active: false },
     ];
     
-    // Add background "world map" placeholder with SVG paths
-    const worldMap = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    worldMap.setAttribute('d', `
-      M ${width * 0.15},${height * 0.35} 
-      C ${width * 0.2},${height * 0.25} ${width * 0.3},${height * 0.2} ${width * 0.35},${height * 0.3}
-      C ${width * 0.4},${height * 0.25} ${width * 0.5},${height * 0.25} ${width * 0.55},${height * 0.3}
-      C ${width * 0.6},${height * 0.35} ${width * 0.7},${height * 0.3} ${width * 0.8},${height * 0.4}
-      C ${width * 0.85},${height * 0.45} ${width * 0.9},${height * 0.6} ${width * 0.8},${height * 0.7}
-      M ${width * 0.15},${height * 0.4} 
-      C ${width * 0.2},${height * 0.5} ${width * 0.25},${height * 0.6} ${width * 0.3},${height * 0.6}
-      M ${width * 0.4},${height * 0.4} 
-      C ${width * 0.45},${height * 0.45} ${width * 0.5},${height * 0.55} ${width * 0.5},${height * 0.6}
-    `);
-    worldMap.setAttribute('stroke', 'var(--border)');
-    worldMap.setAttribute('stroke-width', '2');
-    worldMap.setAttribute('fill', 'none');
-    svg.appendChild(worldMap);
+    // Center point for your website
+    const centerX = width * 0.5;
+    const centerY = height * 0.45;
     
-    // Add location points
-    locations.forEach(location => {
-      // Pulse effect
-      if (location.active) {
-        const pulse = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        pulse.setAttribute('cx', location.x.toString());
-        pulse.setAttribute('cy', location.y.toString());
+    // Draw each validator location
+    locations.forEach(loc => {
+      // Pulse effect on active nodes
+      if (loc.active) {
+        const pulse = document.createElementNS(svg.namespaceURI,'circle');
+        pulse.setAttribute('cx', loc.x.toString());
+        pulse.setAttribute('cy', loc.y.toString());
         pulse.setAttribute('r', '10');
-        pulse.setAttribute('fill', 'var(--primary)');
-        pulse.setAttribute('opacity', '0.3');
+        pulse.setAttribute('fill', '#fff');
+        pulse.setAttribute('opacity', '0.2');
         pulse.classList.add('animate-ping');
         svg.appendChild(pulse);
       }
       
-      // Location point
-      const point = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      point.setAttribute('cx', location.x.toString());
-      point.setAttribute('cy', location.y.toString());
-      point.setAttribute('r', '6');
-      point.setAttribute('fill', location.active ? 'var(--primary)' : 'var(--muted)');
-      svg.appendChild(point);
+      // Dot
+      const dot = document.createElementNS(svg.namespaceURI,'circle');
+      dot.setAttribute('cx', loc.x.toString());
+      dot.setAttribute('cy', loc.y.toString());
+      dot.setAttribute('r', '6');
+      dot.setAttribute('fill', loc.active ? '#fff' : '#888');
+      svg.appendChild(dot);
       
-      // Location label
-      const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      text.setAttribute('x', location.x.toString());
-      text.setAttribute('y', (location.y - 15).toString());
-      text.setAttribute('text-anchor', 'middle');
-      text.setAttribute('font-size', '12');
-      text.setAttribute('fill', 'var(--foreground)');
-      text.textContent = location.name;
-      svg.appendChild(text);
+      // Region label
+      const label = document.createElementNS(svg.namespaceURI,'text');
+      label.setAttribute('x', loc.x.toString());
+      label.setAttribute('y', (loc.y - 12).toString());
+      label.setAttribute('text-anchor', 'middle');
+      label.setAttribute('font-size', '12');
+      label.setAttribute('fill', '#fff');
+      label.textContent = loc.name;
+      svg.appendChild(label);
       
       // Status label
-      const status = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      status.setAttribute('x', location.x.toString());
-      status.setAttribute('y', (location.y + 20).toString());
+      const status = document.createElementNS(svg.namespaceURI,'text');
+      status.setAttribute('x', loc.x.toString());
+      status.setAttribute('y', (loc.y + 16).toString());
       status.setAttribute('text-anchor', 'middle');
       status.setAttribute('font-size', '10');
-      status.setAttribute('fill', 'var(--muted-foreground)');
-      status.textContent = location.active ? 'Monitoring' : 'Inactive';
+      status.setAttribute('fill', '#888');
+      status.textContent = loc.active ? 'Monitoring' : 'Inactive';
       svg.appendChild(status);
     });
     
-    // Add connections between active locations and a central point
-    const centerX = width * 0.5;
-    const centerY = height * 0.45;
-    
-    locations.filter(l => l.active).forEach(location => {
-      const connection = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      connection.setAttribute('x1', centerX.toString());
-      connection.setAttribute('y1', centerY.toString());
-      connection.setAttribute('x2', location.x.toString());
-      connection.setAttribute('y2', location.y.toString());
-      connection.setAttribute('stroke', 'var(--primary)');
-      connection.setAttribute('stroke-width', '1');
-      connection.setAttribute('stroke-dasharray', '3,3');
-      connection.setAttribute('opacity', '0.5');
-      svg.appendChild(connection);
+    // Lines connecting active nodes to center
+    locations.filter(l => l.active).forEach(loc => {
+      const line = document.createElementNS(svg.namespaceURI,'line');
+      line.setAttribute('x1', centerX.toString());
+      line.setAttribute('y1', centerY.toString());
+      line.setAttribute('x2', loc.x.toString());
+      line.setAttribute('y2', loc.y.toString());
+      line.setAttribute('stroke', '#fff');
+      line.setAttribute('stroke-width', '1');
+      line.setAttribute('stroke-dasharray', '3,3');
+      line.setAttribute('opacity', '0.5');
+      svg.appendChild(line);
     });
     
-    // Add website location (center)
-    const website = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-    website.setAttribute('cx', centerX.toString());
-    website.setAttribute('cy', centerY.toString());
-    website.setAttribute('r', '8');
-    website.setAttribute('fill', 'var(--primary)');
-    svg.appendChild(website);
+    // Your website center dot
+    const webDot = document.createElementNS(svg.namespaceURI,'circle');
+    webDot.setAttribute('cx', centerX.toString());
+    webDot.setAttribute('cy', centerY.toString());
+    webDot.setAttribute('r', '8');
+    webDot.setAttribute('fill', '#fff');
+    svg.appendChild(webDot);
     
-    const websiteLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-    websiteLabel.setAttribute('x', centerX.toString());
-    websiteLabel.setAttribute('y', (centerY - 15).toString());
-    websiteLabel.setAttribute('text-anchor', 'middle');
-    websiteLabel.setAttribute('font-size', '13');
-    websiteLabel.setAttribute('font-weight', 'bold');
-    websiteLabel.setAttribute('fill', 'var(--foreground)');
-    websiteLabel.textContent = 'Your Website';
-    svg.appendChild(websiteLabel);
+    // Your website label
+    const webLabel = document.createElementNS(svg.namespaceURI,'text');
+    webLabel.setAttribute('x', centerX.toString());
+    webLabel.setAttribute('y', (centerY - 12).toString());
+    webLabel.setAttribute('text-anchor', 'middle');
+    webLabel.setAttribute('font-size', '13');
+    webLabel.setAttribute('font-weight', 'bold');
+    webLabel.setAttribute('fill', '#fff');
+    webLabel.textContent = 'Your Website';
+    svg.appendChild(webLabel);
     
   }, []);
-  
+
   return (
-    <div 
-      ref={mapContainerRef} 
+    <div
+      ref={mapContainerRef}
       className="w-full h-[300px] rounded-md overflow-hidden"
-    ></div>
+    />
   );
 };
 

@@ -27,8 +27,6 @@ const generateUptimeData = (days = 30) => {
     
     // Generate mostly high uptime values with occasional dips
     let uptime = 100;
-    
-    // Add some variation
     if (i % 7 === 0) {
       uptime = Math.round(Math.max(85, 100 - Math.random() * 15));
     } else if (i % 11 === 0) {
@@ -38,8 +36,8 @@ const generateUptimeData = (days = 30) => {
     }
     
     data.push({
-      date: date,
-      uptime: uptime,
+      date,
+      uptime,
       formattedDate: format(date, 'MMM dd'),
     });
   }
@@ -51,7 +49,6 @@ const UptimeChart = ({ siteId }: UptimeChartProps) => {
   const [data, setData] = useState<any[]>([]);
   
   useEffect(() => {
-    // Generate new data when the site changes
     setData(generateUptimeData());
   }, [siteId]);
   
@@ -59,6 +56,14 @@ const UptimeChart = ({ siteId }: UptimeChartProps) => {
   const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>) => {
     if (active && payload && payload.length) {
       const uptimeValue = payload[0].value as number;
+      const dotColor =
+        uptimeValue >= 99 ? 'text-green-500' :
+        uptimeValue >= 95 ? 'text-yellow-500' :
+        'text-red-500';
+      const statusText =
+        uptimeValue >= 99 ? 'Good' :
+        uptimeValue >= 95 ? 'Warning' :
+        'Critical';
       
       return (
         <Card>
@@ -68,55 +73,59 @@ const UptimeChart = ({ siteId }: UptimeChartProps) => {
               Uptime: <span className="font-semibold">{uptimeValue}%</span>
             </p>
             <div className="flex items-center gap-1">
-              <div className={uptimeValue >= 99 ? "text-green-500" : uptimeValue >= 95 ? "text-yellow-500" : "text-red-500"}>
-                ●
-              </div>
-              <span className="text-xs">{
-                uptimeValue >= 99 ? "Good" : 
-                uptimeValue >= 95 ? "Warning" : 
-                "Critical"
-              }</span>
+              <div className={dotColor}>●</div>
+              <span className="text-xs">{statusText}</span>
             </div>
           </CardContent>
         </Card>
       );
     }
-    
     return null;
   };
   
   return (
     <div className="w-full h-[300px]">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart
-          data={data}
-          margin={{ top: 5, right: 30, left: 10, bottom: 5 }}
-        >
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.3} />
+        <LineChart data={data} margin={{ top: 5, right: 30, left: 10, bottom: 5 }}>
+          {/* grid lines */}
+          <CartesianGrid
+            strokeDasharray="3 3"
+            stroke="hsl(var(--border))"
+            opacity={0.3}
+          />
+          
+          {/* X axis */}
           <XAxis 
-            dataKey="formattedDate" 
-            tick={{ fontSize: 12 }} 
-            stroke="var(--muted-foreground)"
+            dataKey="formattedDate"
+            tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
             tickLine={false}
-            axisLine={{ stroke: 'var(--border)' }}
+            axisLine={{ stroke: 'hsl(var(--border))' }}
             interval="preserveStartEnd"
           />
+          
+          {/* Y axis */}
           <YAxis 
             domain={[0, 100]}
-            tick={{ fontSize: 12 }} 
-            stroke="var(--muted-foreground)"
+            tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
             tickLine={false}
-            axisLine={{ stroke: 'var(--border)' }}
-            tickFormatter={(value) => `${value}%`}
+            axisLine={{ stroke: 'hsl(var(--border))' }}
+            tickFormatter={v => `${v}%`}
           />
+
           <Tooltip content={<CustomTooltip />} />
+
+          {/* uptime line */}
           <Line 
-            type="linear" 
-            dataKey="uptime" 
-            stroke="var(--primary)" 
-            strokeWidth={2} 
-            dot={false} 
-            activeDot={{ r: 6, stroke: 'var(--background)', strokeWidth: 2 }}
+            type="linear"
+            dataKey="uptime"
+            stroke="hsl(var(--primary))"
+            strokeWidth={2}
+            dot={false}
+            activeDot={{
+              r: 6,
+              stroke: 'hsl(var(--background))',
+              strokeWidth: 2,
+            }}
           />
         </LineChart>
       </ResponsiveContainer>
