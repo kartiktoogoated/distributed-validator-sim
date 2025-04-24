@@ -1,55 +1,67 @@
-import axios from 'axios';
-import { info } from '../../utils/logger';
+import ping from 'ping'
+import * as dns from 'dns'
+import { promisify } from 'util'
+import { info } from '../../utils/logger'
 
-export type Status = 'UP' | 'DOWN';
-
-export interface Vote {
-  status: Status;
-  weight: number;
-}
+export type Status = 'UP' | 'DOWN'
+export interface Vote { status: Status; weight: number }
 
 export interface GossipPayload {
-  site:         string;
-  vote:         Vote;
-  validatorId:  number;
-  responseTime: number;
-  timeStamp:    string;
-  location:     string;
+  site: string
+  vote: Vote
+  validatorId: number
+  responseTime: number
+  timeStamp: string
+  location: string
+}
+
+// ── simple in-process DNS cache ───────────────────────────────────────────────
+const lookup = promisify(dns.lookup)
+const dnsCache = new Map<string, { address: string; family: number }>()
+
+async function cachedLookup(hostname: string) {
+  const cached = dnsCache.get(hostname)
+  if (cached) return cached
+  const result = await lookup(hostname, { family: 0, verbatim: true })
+  dnsCache.set(hostname, result)
+  return result
 }
 
 export class Validator {
-  public readonly id: number;
-  public peers: string[] = [];
-  private lastVotes = new Map<string, Vote>();
+  public readonly id: number
+  public peers: string[] = []
+  private lastVotes = new Map<string, Vote>()
 
-  constructor(validatorId: number) {
-    this.id = validatorId;
+  constructor(id: number) {
+    this.id = id
   }
 
   /**
-   * Ping the site and record a vote (UP or DOWN), logging the result.
+   * ICMP-ping (no TCP/TLS), with cached DNS.
    */
   public async checkWebsite(siteUrl: string): Promise<Vote> {
-    const startTime = Date.now();
-    let vote: Vote;
+    const { hostname } = new URL(siteUrl)
+    const start = Date.now()
 
+    let status: Status = 'DOWN'
     try {
-      const response = await axios.get(siteUrl, { timeout: 5000 });
-      const status: Status =
-        response.status >= 200 && response.status < 400 ? 'UP' : 'DOWN';
-      vote = { status, weight: 1 };
+      const { address } = await cachedLookup(hostname)
+      // ping once with a 3 s timeout
+      const res = await ping.promise.probe(address, { timeout: 3 })
+      status = res.alive ? 'UP' : 'DOWN'
     } catch {
-      vote = { status: 'DOWN', weight: 1 };
+      status = 'DOWN'
     }
 
-    const latency = Date.now() - startTime;
-    this.lastVotes.set(siteUrl, vote);
-    info(`📡 Validator ${this.id} pinged ${siteUrl}: ${vote.status} (latency ${latency}ms)`);
-    return vote;
+    const latency = Date.now() - start
+    const vote: Vote = { status, weight: 1 }
+    this.lastVotes.set(siteUrl, vote)
+    info(`📡 Validator ${this.id} pinged ${siteUrl}: ${status} (icmp ${latency} ms)`)
+    return vote
   }
 
   /**
-   * Gossip your last vote for siteUrl to all peers, with a bit of jitter.
+   * Fire off your last vote to all peers immediately—no jitter, 1 round only.
    */
   public gossip(
     siteUrl: string,
@@ -57,49 +69,36 @@ export class Validator {
     timeStamp: string,
     location: string
   ): void {
-    const vote = this.lastVotes.get(siteUrl);
-    if (!vote) return;
+    const vote = this.lastVotes.get(siteUrl)
+    if (!vote) return
 
-    // Simulate ~20% dropped messages
-    if (Math.random() < 0.2) return;
+    const payload: GossipPayload = {
+      site: siteUrl,
+      vote,
+      validatorId: this.id,
+      responseTime,
+      timeStamp,
+      location,
+    }
 
-    const jitterMs = Math.floor(Math.random() * 300) + 100;
-    setTimeout(() => {
-      const payload: GossipPayload = {
-        site:         siteUrl,
-        vote,
-        validatorId:  this.id,
-        responseTime,
-        timeStamp,
-        location,
-      };
-
-      this.peers.forEach((peerAddress) => {
-        axios
-          .post(`http://${peerAddress}/api/simulate/gossip`, payload, { timeout: 3000 })
-          .then(() => info(`🔗 Validator ${this.id} → ${peerAddress}: ${vote.status}`))
-          .catch((err) =>
-            info(`❌ Validator ${this.id} failed to gossip to ${peerAddress}: ${err.message}`)
-          );
-      });
-    }, jitterMs);
+    this.peers.forEach(peer => {
+      fetch(`http://${peer}/api/simulate/gossip`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        // you can polyfill fetch or use node-fetch
+      })
+      .then(() => info(`🔗 Validator ${this.id} → ${peer}: ${vote.status}`))
+      .catch(err => info(`❌ Validator ${this.id} → ${peer} failed: ${err.message}`))
+    })
   }
 
-  /**
-   * Merge in a vote you received from a peer.
-   */
-  public receiveGossip(siteUrl: string, vote: Vote, fromValidatorId: number): void {
-    this.lastVotes.set(siteUrl, vote);
-    info(
-      `🔄 Validator ${this.id} received gossip from ${fromValidatorId}` +
-      ` for ${siteUrl}: ${vote.status}`
-    );
+  public receiveGossip(siteUrl: string, vote: Vote, from: number): void {
+    this.lastVotes.set(siteUrl, vote)
+    info(`🔄 Validator ${this.id} got gossip from ${from} for ${siteUrl}: ${vote.status}`)
   }
 
-  /**
-   * Get the last vote recorded for a given site.
-   */
   public getStatus(siteUrl: string): Vote | undefined {
-    return this.lastVotes.get(siteUrl);
+    return this.lastVotes.get(siteUrl)
   }
 }
