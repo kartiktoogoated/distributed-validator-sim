@@ -3,10 +3,10 @@ dotenv.config();
 
 import { Validator } from './Validator';
 import { info } from '../../utils/logger';
-import prisma from '../prismaClient';  // only to fetch the site list
+import prisma from '../prismaClient';  
 
 // how often to ping (ms)
-const PING_INTERVAL = Number(process.env.PING_INTERVAL ?? 60_000);
+const PING_INTERVAL_MS = Number(process.env.PING_INTERVAL_MS ?? 60_000);
 
 // this node’s validator ID & location
 const myValidatorId = Number(process.env.VALIDATOR_ID);
@@ -42,4 +42,4 @@ async function pollAndGossip() {
 
 // run immediately, then every interval
 pollAndGossip();
-setInterval(pollAndGossip, PING_INTERVAL);
+setInterval(pollAndGossip, PING_INTERVAL_MS);
