@@ -25,23 +25,18 @@ const generateResponseTimeData = (hours = 24) => {
     const date = new Date();
     date.setHours(now.getHours() - i);
     
-    // Generate realistic response times between 50-250ms with some variations
-    let responseTime;
-    
+    let responseTime: number;
     if (i % 6 === 0) {
-      // Add some spikes every 6 hours
       responseTime = Math.round(150 + Math.random() * 100);
     } else if (i % 8 === 0) {
-      // Add some dips
       responseTime = Math.round(50 + Math.random() * 30);
     } else {
-      // Normal ranges
       responseTime = Math.round(80 + Math.random() * 70);
     }
     
     data.push({
       time: date,
-      responseTime: responseTime,
+      responseTime,
       formattedTime: format(date, 'HH:mm'),
     });
   }
@@ -53,7 +48,6 @@ const ResponseTimeChart = ({ siteId }: ResponseTimeChartProps) => {
   const [data, setData] = useState<any[]>([]);
   
   useEffect(() => {
-    // Generate new data when the site changes
     setData(generateResponseTimeData());
   }, [siteId]);
   
@@ -61,9 +55,7 @@ const ResponseTimeChart = ({ siteId }: ResponseTimeChartProps) => {
   const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>) => {
     if (active && payload && payload.length) {
       const responseTime = payload[0].value as number;
-      
-      let status;
-      let statusColor;
+      let status: string, statusColor: string;
       
       if (responseTime < 100) {
         status = 'Excellent';
@@ -94,7 +86,6 @@ const ResponseTimeChart = ({ siteId }: ResponseTimeChartProps) => {
         </Card>
       );
     }
-    
     return null;
   };
   
@@ -105,38 +96,50 @@ const ResponseTimeChart = ({ siteId }: ResponseTimeChartProps) => {
           data={data}
           margin={{ top: 5, right: 30, left: 10, bottom: 5 }}
         >
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.3} />
+          {/* grid */}
+          <CartesianGrid
+            strokeDasharray="3 3"
+            stroke="hsl(var(--border))"
+            opacity={0.3}
+          />
+          {/* X axis */}
           <XAxis 
-            dataKey="formattedTime" 
-            tick={{ fontSize: 12 }} 
-            stroke="var(--muted-foreground)"
+            dataKey="formattedTime"
+            tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
             tickLine={false}
-            axisLine={{ stroke: 'var(--border)' }}
+            axisLine={{ stroke: 'hsl(var(--border))' }}
             interval="preserveStartEnd"
           />
+          {/* Y axis */}
           <YAxis 
             domain={['dataMin - 20', 'dataMax + 20']}
-            tick={{ fontSize: 12 }} 
-            stroke="var(--muted-foreground)"
+            tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
             tickLine={false}
-            axisLine={{ stroke: 'var(--border)' }}
-            tickFormatter={(value) => `${value} ms`}
+            axisLine={{ stroke: 'hsl(var(--border))' }}
+            tickFormatter={v => `${v} ms`}
           />
+
           <Tooltip content={<CustomTooltip />} />
+
           <defs>
             <linearGradient id="colorResponse" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.8}/>
-              <stop offset="95%" stopColor="var(--primary)" stopOpacity={0}/>
+              <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.8}/>
+              <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
             </linearGradient>
           </defs>
-          <Area 
+
+          <Area
             type="monotone"
-            dataKey="responseTime" 
-            stroke="var(--primary)" 
+            dataKey="responseTime"
+            stroke="hsl(var(--primary))"
             strokeWidth={2}
-            fillOpacity={1}
             fill="url(#colorResponse)"
-            activeDot={{ r: 6, stroke: 'var(--background)', strokeWidth: 2 }}
+            fillOpacity={1}
+            activeDot={{
+              r: 6,
+              stroke: 'hsl(var(--background))',
+              strokeWidth: 2,
+            }}
           />
         </AreaChart>
       </ResponsiveContainer>

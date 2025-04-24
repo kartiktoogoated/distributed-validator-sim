@@ -20,24 +20,19 @@ const generatePingData = (hours = 24) => {
     const time = new Date();
     time.setHours(now.getHours() - i);
     
-    // Generate realistic ping times
     let pingTime;
-    
     if (i % 6 === 0) {
-      // Add some spikes
       pingTime = Math.round(70 + Math.random() * 40);
     } else if (i % 8 === 0) {
-      // Add some higher spikes occasionally
       pingTime = Math.round(100 + Math.random() * 80);
     } else {
-      // Normal ranges
       pingTime = Math.round(40 + Math.random() * 40);
     }
     
     data.push({
-      time: time,
-      pingTime: pingTime,
-      formattedTime: time.getHours() + ':00',
+      time,
+      pingTime,
+      formattedTime: `${time.getHours()}:00`,
     });
   }
   
@@ -48,9 +43,8 @@ const generatePingData = (hours = 24) => {
 const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>) => {
   if (active && payload && payload.length) {
     const pingTime = payload[0].value as number;
-    
-    let quality;
-    let qualityColor;
+    let quality: string;
+    let qualityColor: string;
     
     if (pingTime < 60) {
       quality = 'Excellent';
@@ -81,12 +75,11 @@ const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>)
       </Card>
     );
   }
-  
   return null;
 };
 
 const PingChart = () => {
-  const [data, setData] = useState<any[]>([]);
+  const [data, setData] = useState<{ time: Date; pingTime: number; formattedTime: string }[]>([]);
   
   useEffect(() => {
     setData(generatePingData());
@@ -99,30 +92,49 @@ const PingChart = () => {
           data={data}
           margin={{ top: 5, right: 30, left: 10, bottom: 5 }}
         >
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" opacity={0.3} />
-          <XAxis 
-            dataKey="formattedTime" 
-            tick={{ fontSize: 12 }} 
-            stroke="var(--muted-foreground)"
-            tickLine={false}
-            axisLine={{ stroke: 'var(--border)' }}
+          {/* grid lines */}
+          <CartesianGrid
+            strokeDasharray="3 3"
+            stroke="hsl(var(--border))"
+            opacity={0.3}
           />
+          
+          {/* X axis */}
+          <XAxis 
+            dataKey="formattedTime"
+            tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
+            tickLine={false}
+            axisLine={{ stroke: 'hsl(var(--border))' }}
+          />
+          
+          {/* Y axis */}
           <YAxis 
             domain={['dataMin - 20', 'dataMax + 20']}
-            tick={{ fontSize: 12 }} 
-            stroke="var(--muted-foreground)"
+            tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
             tickLine={false}
-            axisLine={{ stroke: 'var(--border)' }}
-            tickFormatter={(value) => `${value} ms`}
+            axisLine={{ stroke: 'hsl(var(--border))' }}
+            tickFormatter={(v) => `${v} ms`}
           />
+
           <Tooltip content={<CustomTooltip />} />
+
+          {/* main line */}
           <Line 
-            type="monotone" 
-            dataKey="pingTime" 
-            stroke="var(--primary)" 
-            strokeWidth={2} 
-            dot={{ stroke: 'var(--primary)', strokeWidth: 2, r: 4, fill: 'var(--background)' }} 
-            activeDot={{ r: 6, stroke: 'var(--background)', strokeWidth: 2 }}
+            type="monotone"
+            dataKey="pingTime"
+            stroke="hsl(var(--primary))"
+            strokeWidth={2}
+            dot={{
+              r: 4,
+              stroke: 'hsl(var(--primary))',
+              strokeWidth: 2,
+              fill: 'hsl(var(--background))',
+            }}
+            activeDot={{
+              r: 6,
+              stroke: 'hsl(var(--background))',
+              strokeWidth: 2,
+            }}
           />
         </LineChart>
       </ResponsiveContainer>
