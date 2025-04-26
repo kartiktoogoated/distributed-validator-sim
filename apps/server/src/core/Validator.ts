@@ -1,7 +1,7 @@
 import ping from 'ping'
 import * as dns from 'dns'
 import { promisify } from 'util'
-import { info } from '../../utils/logger'
+import { info, warn, error as logError } from '../../utils/logger'
 
 export type Status = 'UP' | 'DOWN'
 export interface Vote { status: Status; weight: number }
@@ -21,10 +21,21 @@ const dnsCache = new Map<string, { address: string; family: number }>()
 
 async function cachedLookup(hostname: string) {
   const cached = dnsCache.get(hostname)
-  if (cached) return cached
-  const result = await lookup(hostname, { family: 0, verbatim: true })
-  dnsCache.set(hostname, result)
-  return result
+  if (cached) {
+    info(`DNS cache hit: ${hostname} -> ${cached.address}`)
+    return cached;
+  }
+
+  let result;
+  try {
+    result = await lookup(hostname, { family: 0, verbatim: true })
+    dnsCache.set(hostname, result)
+    info(`DNS cache miss: resolved ${hostname} -> ${result.address}`)
+    return result;
+  } catch (err) {
+    logError(`DNS lookup failed for ${hostname}: ${(err as Error).message}`);
+    throw err
+  }
 }
 
 export class Validator {
@@ -49,8 +60,13 @@ export class Validator {
       // ping once with a 3 s timeout
       const res = await ping.promise.probe(address, { timeout: 3 })
       status = res.alive ? 'UP' : 'DOWN'
-    } catch {
-      status = 'DOWN'
+
+      if (!res.alive) {
+        warn(`Ping responded DOWN for ${siteUrl}`)
+      }
+    } catch (err){
+      logError(`checkWebsite error for ${siteUrl}: ${(err as Error).message}`);
+      status = 'DOWN';
     }
 
     const latency = Date.now() - start
@@ -70,7 +86,10 @@ export class Validator {
     location: string
   ): void {
     const vote = this.lastVotes.get(siteUrl)
-    if (!vote) return
+    if (!vote) {
+      warn(`No cached vote for ${siteUrl}, skipping gossip`);
+      return;
+    }
 
     const payload: GossipPayload = {
       site: siteUrl,
@@ -81,6 +100,7 @@ export class Validator {
       location,
     }
 
+    info(`Gossiping ${siteUrl} (${vote.status}) to ${this.peers.length} peers`)
     this.peers.forEach(peer => {
       fetch(`http://${peer}/api/simulate/gossip`, {
         method: 'POST',

@@ -71,7 +71,7 @@ export class RaftNode {
 
   constructor(
     public id: number,
-    public peers: string[],        // ["host1:port", "host2:port", ...]
+    public peers: string[],        
     private applyCallback: (cmd: any) => void
   ) {
     info(`Node ${this.id} starting as Follower`);
