@@ -4,8 +4,9 @@ import prisma from "../prismaClient";
 import { info, warn, error } from "../../utils/logger";
 import { kafkaBrokerList } from "../config/kafkaConfig";
 import { mailConfig } from "../config/mailConfig";
+import { WebSocketServer, WebSocket } from "ws";
 
-export async function startAlertService(): Promise<void> {
+export async function startAlertService(wsServer: WebSocketServer): Promise<void> {
   const kafkaClient = new Kafka({
     clientId: "alert-service",
     brokers: kafkaBrokerList,
@@ -13,14 +14,13 @@ export async function startAlertService(): Promise<void> {
   });
   const consumer = kafkaClient.consumer({ groupId: "alert-service" });
 
-  // connect & subscribe
   await consumer.connect();
   info(`Alert service connected to Kafka`);
+
   const topic = process.env.VALIDATOR_STATUS_TOPIC ?? "validator-status";
   await consumer.subscribe({ topic, fromBeginning: false });
   info(`Subscribed to topic '${topic}'`);
 
-  // prepare mailer
   const transporter = nodemailer.createTransport({
     host: mailConfig.SMTP_HOST,
     port: mailConfig.SMTP_PORT,
@@ -34,7 +34,6 @@ export async function startAlertService(): Promise<void> {
   await consumer.run({
     eachMessage: async ({ message }) => {
       try {
-        // parse the consensus payload
         const payload = JSON.parse(message.value!.toString()) as {
           url: string;
           consensus: "UP" | "DOWN";
@@ -48,54 +47,69 @@ export async function startAlertService(): Promise<void> {
           timeStamp: string;
         };
 
-        // find the website→user so we know who to email
+        // look up the user’s email
         const siteRecord = await prisma.website.findUnique({
           where: { url: payload.url },
           select: { user: { select: { email: true } } },
         });
         const userEmail = siteRecord?.user.email;
         if (!userEmail) {
-          warn(`No user/email found for site '${payload.url}', skipping alerts.`);
+          warn(`No user/email for site '${payload.url}', skipping alerts.`);
           return;
         }
 
-        // send one email per DOWN vote (location‑aware)
+        // for each DOWN vote, email + WS-broadcast
         for (const v of payload.votes.filter((v) => v.status === "DOWN")) {
           const subject = `ALERT: ${payload.url} DOWN in ${v.location}`;
           const text = `
-Hello,
+Your monitored site (${payload.url}) went DOWN at ${payload.timeStamp}.
 
-Your monitored site (${payload.url}) reported DOWN at ${payload.timeStamp}.
-  
-• Validator ID: ${v.validatorId}  
-• Location: ${v.location}  
-• Response time: ${v.responseTime} ms  
-• Overall consensus: ${payload.consensus}  
-
-Please investigate.
+• Validator ID: ${v.validatorId}
+• Location: ${v.location}
+• Response time: ${v.responseTime} ms
+• Overall consensus: ${payload.consensus}
 
 — Uptime Monitor
 `.trim();
 
+          // send mail
           await transporter.sendMail({
             from: mailConfig.MAIL_FROM,
             to: userEmail,
             subject,
             text,
           });
-          info(`Sent DOWN alert for ${payload.url} @ ${v.location} to ${userEmail}`);
+          info(`Email sent: ${payload.url} @ ${v.location} → ${userEmail}`);
+
+          // broadcast to frontend
+          const wsEvent = {
+            type: "REGION_DOWN",
+            data: {
+              url: payload.url,
+              validatorId: v.validatorId,
+              location: v.location,
+              responseTime: v.responseTime,
+              consensus: payload.consensus,
+              timeStamp: payload.timeStamp,
+            },
+          };
+          wsServer.clients.forEach((client) => {
+            if (client.readyState === WebSocket.OPEN) {
+              client.send(JSON.stringify(wsEvent));
+            }
+          });
+          info(`WS broadcast: REGION_DOWN for ${payload.url} @ ${v.location}`);
         }
       } catch (err: any) {
-        error(`Error processing alert message: ${err.stack || err}`);
+        error(`Error in alertService.eachMessage: ${err.stack || err}`);
       }
     },
   });
 }
 
-// If run directly, start the service
+// If run standalone...
 if (require.main === module) {
-  startAlertService().catch((err) => {
-    error(`Fatal error starting alert service: ${err.stack || err}`);
-    process.exit(1);
-  });
+  // You’ll need to import or instantiate a WS server here if you do this.
+  error("Please import startAlertService(wsServer) from your main server entrypoint.");
+  process.exit(1);
 }

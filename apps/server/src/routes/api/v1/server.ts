@@ -9,14 +9,15 @@ import http from "http";
 import { WebSocketServer } from "ws";
 
 import { info, error as logError } from "../../../../utils/logger";
-import authRouter       from "./auth";
-import websiteRouter    from "./website";
+import authRouter from "./auth";
+import websiteRouter from "./website";
 import createSimulationRouter from "./simulation";
-import createStatusRouter     from "./status";
-import { startKafkaProducer } from "../../../services/producer";
-import { RaftNode }           from "../../../core/raft";
-import { initRaftRouter }     from "./raftServer";
+import createStatusRouter from "./status";
 import createLogsRouter from "./logs";
+import { startKafkaProducer } from "../../../services/producer";
+import { startAlertService } from "../../../services/alertService";
+import { RaftNode } from "../../../core/raft";
+import { initRaftRouter } from "./raftServer";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -42,7 +43,9 @@ const peers  = process.env.PEERS.split(",").map(p =>
 
 export const raftNode = new RaftNode(nodeId, peers, (cmd) => {
   const message = JSON.stringify({ type: "raft-commit", data: cmd });
-  wss.clients.forEach(c => c.readyState === c.OPEN && c.send(message));
+  wss.clients.forEach(c =>
+    c.readyState === c.OPEN && c.send(message)
+  );
 });
 
 // ── Raft RPC (no rate-limit) ───────────
@@ -59,15 +62,21 @@ app.use(
 );
 
 // ── Your routes ─────────────────────────
-app.use("/api/auth", authRouter);
-app.use("/api",     websiteRouter);
-app.use("/api/simulate", createSimulationRouter(wss));
-app.use("/api/status",   createStatusRouter(wss));
-app.use("/api/logs", createLogsRouter());
+app.use("/api/auth",       authRouter);
+app.use("/api",            websiteRouter);
+app.use("/api/simulate",   createSimulationRouter(wss));
+app.use("/api/status",     createStatusRouter(wss));
+app.use("/api/logs",       createLogsRouter());
 
 // ── Kafka producer ──────────────────────
 startKafkaProducer().catch((err) => {
   logError(`Kafka init failed: ${err}`);
+});
+
+// ── Alert service ───────────────────────
+startAlertService(wss).catch((err) => {
+  logError(`Failed to start AlertService: ${err.stack || err}`);
+  process.exit(1);
 });
 
 // ── WS logging ──────────────────────────

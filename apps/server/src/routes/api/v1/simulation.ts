@@ -7,7 +7,6 @@ import { info, error as logError } from "../../../../utils/logger";
 import prisma from "../../../prismaClient";
 import {
   Validator,
-  Vote,
   Status,
   GossipPayload,
 } from "../../../core/Validator";
@@ -48,14 +47,14 @@ const raftNode = new RaftNode(localValidatorId, peerAddresses, (committed) => {
 export default function createSimulationRouter(
   wsServer: WebSocketServer
 ): Router {
-  const router = Router();
-  router.use(express.json());
+  const SimulationRouter = Router();
+  SimulationRouter.use(express.json());
 
   let isLoopRunning = false;
   let monitoredUrl = process.env.DEFAULT_TARGET_URL || "http://example.com";
 
   // 1) Intake gossip from other validators
-  router.post(
+  SimulationRouter.post(
     "/gossip",
     async (req: Request, res: Response, next: NextFunction): Promise<void> => {
       try {
@@ -88,7 +87,7 @@ export default function createSimulationRouter(
   );
 
   // 2) Kick off & one-shot GET /api/simulate
-  router.get(
+  SimulationRouter.get(
     "/",
     async (req: Request, res: Response, next: NextFunction): Promise<void> => {
       try {
@@ -184,5 +183,5 @@ export default function createSimulationRouter(
     return payload;
   }
 
-  return router;
+  return SimulationRouter;
 }

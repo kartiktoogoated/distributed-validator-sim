@@ -1,4 +1,4 @@
-import { Validator, Vote, Status } from "./Validator";
+import { Validator, Status } from "./Validator";
 
 export class Hub {
   private validators: Validator[];
