@@ -1,7 +1,7 @@
 import express, { Request, Response } from "express";
 import { WebSocketServer } from "ws";
 import { Validator } from "../../../core/Validator";
-import { info, error as logError } from "../../../../utils/logger";
+import { info, warn, error as logError } from "../../../../utils/logger";
 
 export default function createStatusRouter(ws: WebSocketServer) {
   const router = express.Router();
@@ -13,17 +13,21 @@ export default function createStatusRouter(ws: WebSocketServer) {
         (req.query.url as string) ||
         process.env.DEFAULT_TARGET_URL ||
         "http://google.com";
+      info(`Status check requested for ${targetUrl}`);
 
       // run a single checkWebsite() locally
       const validatorId = Number(process.env.VALIDATOR_ID);
       if (isNaN(validatorId)) {
-        throw new Error("VALIDATOR_ID must be defined");
+        warn(`Invalid VALIDATOR_ID: ${process.env.VALIDATOR_ID}`);
+        return res
+          .status(500)
+          .json({ success: false, message: "VALIDATOR_ID must be defined" });
       }
 
       const validator = new Validator(validatorId);
       const vote = await validator.checkWebsite(targetUrl);
 
-      info(`Status ping for ${targetUrl}: ${vote.status}`);
+      info(`Status ping for ${targetUrl}: ${vote.status} (${vote.weight})`);
 
       // return exactly the fields you want
       return res.json({
