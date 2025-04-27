@@ -3,7 +3,7 @@ dotenv.config();
 
 import express, { Router, Request, Response, NextFunction } from "express";
 import { WebSocketServer } from "ws";
-import { info, error as logError } from "../../../../utils/logger";
+import { info, warn, error as logError } from "../../../../utils/logger";
 import prisma from "../../../prismaClient";
 import {
   Validator,
@@ -44,6 +44,9 @@ const raftNode = new RaftNode(localValidatorId, peerAddresses, (committed) => {
   info(`Raft committed: ${JSON.stringify(committed)}`);
 });
 
+// move monitoredUrl to module scope so executeRound can see it
+let monitoredUrl = process.env.DEFAULT_TARGET_URL || "http://example.com";
+
 export default function createSimulationRouter(
   wsServer: WebSocketServer
 ): Router {
@@ -51,15 +54,14 @@ export default function createSimulationRouter(
   SimulationRouter.use(express.json());
 
   let isLoopRunning = false;
-  let monitoredUrl = process.env.DEFAULT_TARGET_URL || "http://example.com";
 
   // 1) Intake gossip from other validators
   SimulationRouter.post(
     "/gossip",
-    async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    async (req: Request<{}, any, GossipPayload>, res: Response, next: NextFunction) => {
       try {
         const { site, vote, validatorId, responseTime, timeStamp, location } =
-          req.body as GossipPayload;
+          req.body;
 
         if (
           typeof site !== "string" ||
@@ -70,73 +72,88 @@ export default function createSimulationRouter(
           !vote ||
           (vote.status !== "UP" && vote.status !== "DOWN")
         ) {
+          warn(`Malformed gossip payload: ${JSON.stringify(req.body)}`);
           res.status(400).send("Malformed gossip payload");
           return;
         }
 
         validatorInstance.receiveGossip(site, vote, validatorId);
         info(`🔄 Gossip from ${validatorId}@${location} for ${site}: ${vote.status}`);
-
         res.sendStatus(204);
-        return;
-      } catch (err) {
-        logError(`Gossip handler error: ${err}`);
+      } catch (err: any) {
+        logError(`Gossip handler error: ${err.stack || err}`);
         next(err);
       }
     }
   );
 
   // 2) Kick off & one-shot GET /api/simulate
-  SimulationRouter.get(
-    "/",
-    async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-      try {
-        if (typeof req.query.url === "string") {
-          monitoredUrl = req.query.url;
-        }
-
-        if (!isLoopRunning) {
-          setInterval(executeRound, PING_INTERVAL_MS);
-          isLoopRunning = true;
-          info(`🔁 Simulation loop started for Validator ${localValidatorId}`);
-        }
-
-        const payload = await executeRound();
-        res.json({ success: true, ...payload });
-        return;
-      } catch (err) {
-        logError(`GET /simulation error: ${err}`);
-        next(err);
+  SimulationRouter.get("/", async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (typeof req.query.url === "string") {
+        monitoredUrl = req.query.url;
+        info(`Monitored URL updated to ${monitoredUrl}`);
       }
+
+      if (!isLoopRunning) {
+        setInterval(() => {
+          executeRound(wsServer).catch(err =>
+            logError(`executeRound failed: ${err.stack || err}`)
+          );
+        }, PING_INTERVAL_MS);
+        isLoopRunning = true;
+        info(`🔁 Simulation loop started for Validator ${localValidatorId}`);
+      }
+
+      const payload = await executeRound(wsServer);
+      res.json({ success: true, ...payload });
+      // no `return res.json(...)` to keep return type void
+    } catch (err: any) {
+      logError(`GET /simulation error: ${err.stack || err}`);
+      next(err);
     }
-  );
+  });
 
-  // 3) Core ping → gossip → consensus round
-  async function executeRound(): Promise<{
-    url: string;
-    consensus: Status;
-    votes: Array<{ validatorId: number; status: Status; weight: number }>;
-    timeStamp: string;
-  }> {
-    // a) ping
+  return SimulationRouter;
+}
+
+// 3) Core ping → gossip → consensus round
+async function executeRound(wsServer: WebSocketServer): Promise<{
+  url: string;
+  consensus: Status;
+  votes: Array<{ validatorId: number; status: Status; weight: number }>;
+  timeStamp: string;
+}> {
+  // a) ping
+  let vote, latency, timeStamp: string;
+  try {
     const start = Date.now();
-    const vote = await validatorInstance.checkWebsite(monitoredUrl);
-    const latency = Date.now() - start;
-    const timeStamp = new Date().toISOString();
-
+    vote = await validatorInstance.checkWebsite(monitoredUrl);
+    latency = Date.now() - start;
+    timeStamp = new Date().toISOString();
     info(
       `[Ping] Validator ${localValidatorId}@${localLocation}` +
         ` → ${monitoredUrl}: ${vote.status} (${latency}ms)`
     );
+  } catch (err: any) {
+    logError(`Ping error for ${monitoredUrl}: ${err.stack || err}`);
+    throw err;
+  }
 
-    // b) ensure our Validator row exists
+  // b) ensure our Validator row exists
+  try {
     await prisma.validator.upsert({
       where: { id: localValidatorId },
       update: { location: localLocation },
       create: { id: localValidatorId, location: localLocation },
     });
+    info(`Upserted validator ${localValidatorId}@${localLocation}`);
+  } catch (err: any) {
+    logError(`DB upsert validator error: ${err.stack || err}`);
+  }
 
-    // c) persist the raw ping
+  // c) persist the raw ping
+  try {
     await prisma.validatorLog.create({
       data: {
         validatorId: localValidatorId,
@@ -145,43 +162,59 @@ export default function createSimulationRouter(
         timestamp: new Date(timeStamp),
       },
     });
-
-    // d) gossip just once, immediately
-    await new GossipManager([validatorInstance], GOSSIP_ROUNDS, localLocation)
-      .runGossipRounds(monitoredUrl, latency, timeStamp);
-
-    // e) compute majority-quorum consensus
-    const total = peerAddresses.length + 1;
-    const quorum = Math.ceil(total / 2);
-    const consensusStatus = new Hub([validatorInstance], quorum).checkConsensus(
-      monitoredUrl
-    ) as Status;
-
-    info(`[Consensus] ${monitoredUrl} → ${consensusStatus} (${quorum}/${total})`);
-
-    // f) build and return payload
-    const payload = {
-      url: monitoredUrl,
-      consensus: consensusStatus,
-      votes: [{ validatorId: localValidatorId, status: vote.status, weight: vote.weight }],
-      timeStamp,
-    };
-
-    // g) Raft-propose
-    try {
-      raftNode.propose(payload);
-    } catch {
-      info("Not Raft leader—skipping propose");
-    }
-
-    // h) broadcast over WS
-    const msg = JSON.stringify(payload);
-    wsServer.clients.forEach((c) => {
-      if (c.readyState === c.OPEN) c.send(msg);
-    });
-
-    return payload;
+    info(`Logged ping for ${monitoredUrl}`);
+  } catch (err: any) {
+    logError(`DB create validatorLog error: ${err.stack || err}`);
   }
 
-  return SimulationRouter;
+  // d) gossip just once, immediately
+  try {
+    await new GossipManager([validatorInstance], GOSSIP_ROUNDS, localLocation)
+      .runGossipRounds(monitoredUrl, latency, timeStamp);
+    info(`GossipManager completed gossip rounds`);
+  } catch (err: any) {
+    logError(`GossipManager error: ${err.stack || err}`);
+  }
+
+  // e) compute majority-quorum consensus
+  let consensusStatus: Status = vote.status;
+  try {
+    const total = peerAddresses.length + 1;
+    const quorum = Math.ceil(total / 2);
+    consensusStatus = new Hub([validatorInstance], quorum).checkConsensus(
+      monitoredUrl
+    ) as Status;
+    info(`[Consensus] ${monitoredUrl} → ${consensusStatus} (${quorum}/${total})`);
+  } catch (err: any) {
+    logError(`Consensus computation error: ${err.stack || err}`);
+  }
+
+  // f) build payload
+  const payload = {
+    url: monitoredUrl,
+    consensus: consensusStatus,
+    votes: [{ validatorId: localValidatorId, status: vote.status, weight: vote.weight }],
+    timeStamp,
+  };
+
+  // g) Raft-propose
+  try {
+    raftNode.propose(payload);
+    info(`Raft propose successful`);
+  } catch {
+    info("Not Raft leader—skipping propose");
+  }
+
+  // h) broadcast over WS
+  try {
+    const msg = JSON.stringify(payload);
+    wsServer.clients.forEach(c => {
+      if (c.readyState === c.OPEN) c.send(msg);
+    });
+    info(`Broadcasted payload over WebSocket`);
+  } catch (err: any) {
+    logError(`WebSocket broadcast error: ${err.stack || err}`);
+  }
+
+  return payload;
 }
