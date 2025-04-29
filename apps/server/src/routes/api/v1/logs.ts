@@ -7,6 +7,7 @@ export default function createLogsRouter(): Router {
 
   router.get("/", async (_req: Request, res: Response) => {
     try {
+      // Fetch *all* logs, newest first
       const logs = await prisma.validatorLog.findMany({
         include: {
           validator: {
@@ -16,17 +17,17 @@ export default function createLogsRouter(): Router {
         orderBy: { timestamp: "desc" },
       });
 
-      // return the logs plus region and latency
       res.json({
         success: true,
-        logs: logs.map((log: any) => ({
-          id:           log.id,
-          validatorId:  log.validatorId,
-          region:       log.validator.location,
-          site:         log.site,
-          status:       log.status,
-          latency:      log.latency,       // new field
-          timestamp:    log.timestamp,
+        logs: logs.map((log) => ({
+          id:          log.id,
+          validatorId: log.validatorId,
+          region:      log.validator?.location ?? "aggregator",
+          site:        log.site,
+          status:      log.status,
+          // if you've since added 'latency' to your schema, include it here:
+          latency:     (log as any).latency ?? null,
+          timestamp:   log.timestamp,
         })),
       });
     } catch (err: any) {

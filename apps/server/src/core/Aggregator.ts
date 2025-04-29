@@ -2,7 +2,7 @@ import 'express-async-errors';
 import dotenv from 'dotenv'
 dotenv.config();
 
-import express, { Request, Response, NextFunction } from 'express';
+import express, { Request, Response } from 'express';
 import http from 'http';
 import { WebSocketServer } from 'ws';
 import prisma from '../prismaClient';
@@ -27,7 +27,7 @@ const SERVER_PORT = Number(process.env.PORT) || 3000;
 
 // VALIDATOR_IDS
 if (!process.env.VALIDATOR_IDS) {
-  throw new AppError('VALIDATOR_IDS must be set (comma-separated', 500);
+  throw new AppError('VALIDATOR_IDS must be set (comma-separated)', 500);
 }
 const VALIDATOR_IDS = process.env.VALIDATOR_IDS.split(',')
   .map((s) => {
@@ -35,108 +35,108 @@ const VALIDATOR_IDS = process.env.VALIDATOR_IDS.split(',')
     if (isNaN(n)) throw new AppError(`Invalid validator ID: ${s}`, 400);
     return n;
   });
-  if (VALIDATOR_IDS.length === 0) {
-    throw new AppError(`VALIDATOR_IDS list cannot be empty`, 400);
-  };
+if (VALIDATOR_IDS.length === 0) {
+  throw new AppError(`VALIDATOR_IDS list cannot be empty`, 400);
+}
 
-  const QUORUM = Math.ceil(VALIDATOR_IDS.length / 2);
+const QUORUM = Math.ceil(VALIDATOR_IDS.length / 2);
 
-  // AGGREGATION INTERVAL
-  const AGG_INTERVAL = Number(process.env.PING_INTERVAL_MS) || 10_000;
+// AGGREGATION INTERVAL
+const AGG_INTERVAL = Number(process.env.PING_INTERVAL_MS) || 10_000;
 
-  // KAFKA TOPIC
-  const KAFKA_TOPIC = process.env.KAFKA_TOPIC;
-  if (!KAFKA_TOPIC) {
-    throw new AppError(`KAFKA_TOPIC must be defined`, 500);
-  };
+// KAFKA TOPIC
+const KAFKA_TOPIC = process.env.KAFKA_TOPIC;
+if (!KAFKA_TOPIC) {
+  throw new AppError(`KAFKA_TOPIC must be defined`, 500);
+}
 
-  // ALERT EMAILS
-  let ALERT_EMAILS: Record<string, string> = {};
-  if (process.env.LOCATION_EMAILS) {
-    try {
-      ALERT_EMAILS = JSON.parse(process.env.LOCATION_EMAILS);
-    } catch {
-      throw new AppError('LOCATION_EMAILS must be valid JSON', 400);
+// ALERT EMAILS
+let ALERT_EMAILS: Record<string, string> = {};
+if (process.env.LOCATION_EMAILS) {
+  try {
+    ALERT_EMAILS = JSON.parse(process.env.LOCATION_EMAILS);
+  } catch {
+    throw new AppError('LOCATION_EMAILS must be valid JSON', 400);
+  }
+}
+
+// MAILER
+const mailTransporter = nodemailer.createTransport({
+  host: mailConfig.SMTP_HOST,
+  port: Number(mailConfig.SMTP_PORT),
+  secure: mailConfig.SMTP_SECURE,
+  auth: {
+    user: mailConfig.SMTP_USER,
+    pass: mailConfig.SMTP_PASS,
+  },
+});
+
+// APP + WS SETUP
+const app = express();
+app.use(express.json());
+
+const server = http.createServer(app);
+const wsServer = new WebSocketServer({ server });
+
+// IN MEMORY BUFFER
+interface VoteEntry {
+  validatorId: number;
+  status: 'UP' | 'DOWN';
+  weight: number;
+  responseTime: number;
+  location: string;
+}
+
+const voteBuffer: Record<string, VoteEntry[]> = {};
+
+// GOSSIP ROUTE
+app.post(
+  '/api/simulate/gossip',
+  async (req: Request, res: Response) => {
+    const {
+      site,
+      vote,
+      fromId,
+      responseTime,
+      timeStamp,
+      location,
+    } = req.body as {
+      site: string;
+      vote: { status: "UP" | "DOWN"; weight: number };
+      fromId: number;
+      responseTime: number;
+      timeStamp: string;
+      location: string;
+    };
+
+    if (
+      typeof site !== 'string' ||
+      typeof fromId !== 'number' ||
+      typeof responseTime !== 'number' ||
+      typeof timeStamp !== 'string' ||
+      typeof location !== 'string' ||
+      !vote ||
+      (vote.status !== 'UP' && vote.status !== 'DOWN')
+    ) {
+      throw new AppError('Malformed gossip payload', 400);
     }
-  }
 
-  // MAILER
-  const mailTransporter = nodemailer.createTransport({
-    host: mailConfig.SMTP_HOST,
-    port: Number(mailConfig.SMTP_PORT),
-    secure: mailConfig.SMTP_SECURE,
-    auth: {
-      user: mailConfig.SMTP_USER,
-      pass: mailConfig.SMTP_PASS,
-    },
-  });
+    const key = `${site}: ${timeStamp}`;
+    voteBuffer[key] = voteBuffer[key] || [];
+    voteBuffer[key].push({
+      validatorId: fromId,
+      status: vote.status,
+      weight: vote.weight,
+      responseTime,
+      location,
+    });
 
-  // APP + WS SETUP
-  const app = express();
-  app.use(express.json());
-
-  const server = http.createServer(app);
-  const wsServer = new WebSocketServer({ server });
-
-  // IN MEMORY BUFFER
-  interface VoteEntry {
-    validatorId: number;
-    status: 'UP' | 'DOWN';
-    weight: number;
-    responseTime: number;
-    location: string;
-  }
-
-  const voteBuffer: Record<string, VoteEntry[]> = {};
-
-  // GOSSIP ROUTE
-  app.post(
-    '/api/simulate/gossip',
-    async(req: Request, res: Response) => {
-      const {
-        site,
-        vote,
-        fromId,
-        responseTime,
-        timeStamp,
-        location,
-      } = req.body as {
-        site: string;
-        vote: { status: "UP" | "DOWN"; weight: number };
-        fromId: number;
-        responseTime: number;
-        timeStamp: string;
-        location: string;
-      };
-
-      if (
-        typeof site !== 'string' ||
-        typeof fromId !== 'number' ||
-        typeof responseTime !== 'number' ||
-        typeof timeStamp !== 'string' ||
-        typeof location !== 'string' ||
-        !vote ||
-        (vote.status !== 'UP' && vote.status !== 'DOWN')
-      ) {
-        throw new AppError('Malformed gossip payload', 400);
-      }
-
-      const key = `${site}: ${timeStamp}`;
-      voteBuffer[key] = voteBuffer[key] || [];
-      voteBuffer[key].push({
-        validatorId: fromId,
-        status: vote.status,
-        weight: vote.weight,
-        responseTime,
-        location,
-      });
-
-      info(`Received gossip from ${fromId}@${location} → ${site}: ${vote.status}`);
+    info(`Received gossip from ${fromId}@${location} → ${site}: ${vote.status}`);
     res.sendStatus(204);
-    }
-  );
+  }
+);
 
-  // ── PROCESS QUORUM ──────────────────────────────────────────────────────────
+// ── PROCESS QUORUM ──────────────────────────────────────────────────────────
 async function processQuorum() {
   for (const key of Object.keys(voteBuffer)) {
     const entries = voteBuffer[key];
@@ -144,24 +144,28 @@ async function processQuorum() {
 
     const [site, timeStamp] = key.split(':');
     const upCount = entries.filter((e) => e.status === 'UP').length;
-    const consensus: 'UP' | 'DOWN' = upCount >= entries.length - upCount ? 'UP' : 'DOWN';
+    const consensus: 'UP' | 'DOWN' =
+      upCount >= entries.length - upCount ? 'UP' : 'DOWN';
 
     info(`✔️ Consensus for ${site}@${timeStamp}: ${consensus} (${upCount}/${entries.length} UP)`);
 
-    // a) Persist raw votes + consensus
+    // a) Persist raw votes + consensus, now including latency
     await prisma.validatorLog.createMany({
       data: entries.map((e) => ({
         validatorId: e.validatorId,
         site,
         status: e.status,
+        latency: e.responseTime,          // ← added
         timestamp: new Date(timeStamp),
       })),
     });
+
     await prisma.validatorLog.create({
       data: {
         validatorId: 0,
         site,
         status: consensus,
+        latency: 0,                       // ← added
         timestamp: new Date(timeStamp),
       },
     });
@@ -209,7 +213,7 @@ server.listen(SERVER_PORT, () => {
 });
 
 setInterval(() => {
-  processQuorum().catch((e) => logError(`processQuorum crashed: ${(e as Error).message}`));
+  processQuorum().catch((e) =>
+    logError(`processQuorum crashed: ${(e as Error).message}`)
+  );
 }, AGG_INTERVAL);
-
-  
