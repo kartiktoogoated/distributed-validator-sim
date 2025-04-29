@@ -1,119 +1,113 @@
-import { useEffect, useRef } from 'react';
+/* eslint-disable react-hooks/exhaustive-deps */
+// src/components/validators/validator-map.tsx
+import { useEffect, useRef, useState } from 'react'
+
+const regionCoords: Record<string, { xFrac: number; yFrac: number }> = {
+  'north-america':   { xFrac: 0.25, yFrac: 0.35 },
+  'europe':          { xFrac: 0.50, yFrac: 0.25 },
+  'asia-pacific':    { xFrac: 0.80, yFrac: 0.40 },
+  'south-america':   { xFrac: 0.30, yFrac: 0.70 },
+  'africa':          { xFrac: 0.60, yFrac: 0.60 },
+  // add more as needed
+}
 
 const ValidatorMap = () => {
-  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<HTMLDivElement>(null)
+  const [pulsingRegions, setPulsingRegions] = useState<Set<string>>(new Set())
 
-  useEffect(() => {
-    if (!mapContainerRef.current) return;
-    const container = mapContainerRef.current;
-    const W = container.clientWidth;
-    const H = container.clientHeight;
+  // redraw whenever pulsingRegions changes or on mount
+  const drawMap = () => {
+    const container = mapRef.current
+    if (!container) return
+    const W = container.clientWidth
+    const H = container.clientHeight
 
     // clear
-    container.innerHTML = '';
+    container.innerHTML = ''
 
-    // svg
-    const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
-    svg.setAttribute('width','100%');
-    svg.setAttribute('height','100%');
-    svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
-    container.appendChild(svg);
+    const svg = document.createElementNS('http://www.w3.org/2000/svg','svg')
+    svg.setAttribute('width','100%')
+    svg.setAttribute('height','100%')
+    svg.setAttribute('viewBox',`0 0 ${W} ${H}`)
+    container.appendChild(svg)
 
-    // move validator to 25% width, 35% height
-    const vx = W * 0.25;
-    const vy = H * 0.35;
-
-    // pulse
-    const pulse = document.createElementNS(svg.namespaceURI,'circle');
-    pulse.setAttribute('cx',vx.toString());
-    pulse.setAttribute('cy',vy.toString());
-    pulse.setAttribute('r','12');
-    pulse.setAttribute('fill','#fff');
-    pulse.setAttribute('opacity','0.2');
-    pulse.classList.add('animate-ping');
-    svg.appendChild(pulse);
-
-    // main dot
-    const dot = document.createElementNS(svg.namespaceURI,'circle');
-    dot.setAttribute('cx',vx.toString());
-    dot.setAttribute('cy',vy.toString());
-    dot.setAttribute('r','5');
-    dot.setAttribute('fill','#fff');
-    svg.appendChild(dot);
-
-    // helper for left-aligned text
-    function makeText(x: number, y: number, txt: string, size: number, fill: string, weight = 'normal') {
-      const t = document.createElementNS(svg.namespaceURI,'text');
-      t.setAttribute('x', x.toString());
-      t.setAttribute('y', y.toString());
-      t.setAttribute('text-anchor','start');
-      t.setAttribute('font-size', size.toString());
-      t.setAttribute('fill', fill);
-      t.setAttribute('font-weight', weight);
-      t.textContent = txt;
-      svg.appendChild(t);
+    // helper for left text
+    const makeText = (
+      x:number, y:number, txt:string,
+      size:number, fill:string, weight='normal'
+    ) => {
+      const t = document.createElementNS(svg.namespaceURI,'text')
+      t.setAttribute('x',x.toString())
+      t.setAttribute('y',y.toString())
+      t.setAttribute('font-size',size.toString())
+      t.setAttribute('fill',fill)
+      t.setAttribute('font-weight',weight)
+      t.setAttribute('text-anchor','start')
+      t.textContent = txt
+      svg.appendChild(t)
     }
 
-    // Validator labels
-    makeText(vx + 10, vy - 8, 'Your Validator', 14, '#fff','600');
-    makeText(vx + 10, vy + 18, 'North America', 12, '#ccc');
+    // draw region dots + labels
+    Object.entries(regionCoords).forEach(([region, {xFrac,yFrac}]) => {
+      const x = W * xFrac
+      const y = H * yFrac
 
-    // monitored websites, shifted left
-    const sites = [
-      { x: W * 0.42, y: H * 0.28, name: 'example.com'    },
-      { x: W * 0.62, y: H * 0.23, name: 'api.service.org' },
-      { x: W * 0.65, y: H * 0.48, name: 'cloud.app.io'    },
-      { x: W * 0.78, y: H * 0.58, name: 'static.cdn.net'  },
-    ];
+      // if this region is pulsing, draw a larger animate-ping circle
+      if (pulsingRegions.has(region)) {
+        const pulse = document.createElementNS(svg.namespaceURI,'circle')
+        pulse.setAttribute('cx',x.toString())
+        pulse.setAttribute('cy',y.toString())
+        pulse.setAttribute('r','15')
+        pulse.setAttribute('fill','#fff')
+        pulse.setAttribute('opacity','0.2')
+        pulse.classList.add('animate-ping')
+        svg.appendChild(pulse)
+      }
 
-    sites.forEach(site => {
-      // dashed connection
-      const ln = document.createElementNS(svg.namespaceURI,'line');
-      ln.setAttribute('x1',vx.toString());
-      ln.setAttribute('y1',vy.toString());
-      ln.setAttribute('x2',site.x.toString());
-      ln.setAttribute('y2',site.y.toString());
-      ln.setAttribute('stroke','#fff');
-      ln.setAttribute('stroke-width','0.8');
-      ln.setAttribute('stroke-dasharray','2,2');
-      ln.setAttribute('opacity','0.5');
-      svg.appendChild(ln);
+      // main dot
+      const dot = document.createElementNS(svg.namespaceURI,'circle')
+      dot.setAttribute('cx',x.toString())
+      dot.setAttribute('cy',y.toString())
+      dot.setAttribute('r','5')
+      dot.setAttribute('fill','#fff')
+      svg.appendChild(dot)
 
-      // site dot
-      const sp = document.createElementNS(svg.namespaceURI,'circle');
-      sp.setAttribute('cx',site.x.toString());
-      sp.setAttribute('cy',site.y.toString());
-      sp.setAttribute('r','3');
-      sp.setAttribute('fill','#ccc');
-      svg.appendChild(sp);
+      // label
+      makeText(x + 8, y + 4, region.replace('-', ' '), 12, '#ccc')
+    })
+  }
 
-      // site label
-      makeText(site.x + 6, site.y + 3, site.name, 10, '#ccc');
-    });
+  useEffect(() => {
+    drawMap()
+  }, [pulsingRegions])
 
-    // legend, moved to 30% & 60%
-    const ly = H * 0.9;
-    function addLegend(cx: number, label: string, color: string) {
-      const pt = document.createElementNS(svg.namespaceURI,'circle');
-      pt.setAttribute('cx',cx.toString());
-      pt.setAttribute('cy',ly.toString());
-      pt.setAttribute('r','4');
-      pt.setAttribute('fill',color);
-      svg.appendChild(pt);
-      makeText(cx + 10, ly + 4, label, 10, '#fff');
+  useEffect(() => {
+    // open WS
+    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
+    const ws = new WebSocket(`${proto}://${window.location.host}/api`)
+
+    ws.onmessage = (ev) => {
+      try {
+        const { votes } = JSON.parse(ev.data) as {
+          votes: Array<{ location: string }>
+        }
+        const regions = new Set(votes.map(v => v.location))
+        setPulsingRegions(regions)
+        // clear pulses after 1s
+        setTimeout(() => setPulsingRegions(new Set()), 1000)
+      } catch {
+        // ignore non‐gossip messages
+      }
     }
-
-    addLegend(W * 0.30, 'Your Validator', '#fff');
-    addLegend(W * 0.60, 'Monitored Websites', '#ccc');
-
-  }, []);
+    return () => ws.close()
+  }, [])
 
   return (
     <div
-      ref={mapContainerRef}
+      ref={mapRef}
       className="w-full h-[300px] rounded-md overflow-hidden"
     />
-  );
-};
+  )
+}
 
-export default ValidatorMap;
+export default ValidatorMap
