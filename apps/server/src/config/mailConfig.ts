@@ -1,17 +1,15 @@
 import { z } from "zod";
 
-const mailEnv = z.object({
-  SMTP_HOST: z.string().nonempty(),
-  SMTP_PORT: z.coerce
-    .number()
-    .int()
-    .positive()
-    .default(587),
-  SMTP_USER: z.string().nonempty(),
-  SMTP_PASS: z.string().nonempty(),
-  SMTP_SECURE: z.coerce.boolean().default(false),
-  MAIL_FROM: z.string().email(),
-});
+export const mailEnv = z
+  .object({
+    SMTP_HOST:   z.string().optional().default(""),              
+    SMTP_PORT:   z.coerce.number().int().positive().default(587),
+    SMTP_USER:   z.string().optional().default(""),
+    SMTP_PASS:   z.string().optional().default(""),
+    SMTP_SECURE: z.coerce.boolean().default(false),
+    MAIL_FROM:   z.string().email().optional().default("no-reply@example.com"),
+  })
+  .parse(process.env);
 
-export type MailConfig = z.infer<typeof mailEnv>;
-export const mailConfig = mailEnv.parse(process.env);
+export type MailConfig = typeof mailEnv;
+export const mailConfig = mailEnv;

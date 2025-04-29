@@ -107,7 +107,6 @@ export default function createSimulationRouter(
 
       const payload = await executeRound(wsServer);
       res.json({ success: true, ...payload });
-      // no `return res.json(...)` to keep return type void
     } catch (err: any) {
       logError(`GET /simulation error: ${err.stack || err}`);
       next(err);
@@ -125,7 +124,9 @@ async function executeRound(wsServer: WebSocketServer): Promise<{
   timeStamp: string;
 }> {
   // a) ping
-  let vote, latency, timeStamp: string;
+  let vote: { status: Status; weight: number };
+  let latency: number;
+  let timeStamp: string;
   try {
     const start = Date.now();
     vote = await validatorInstance.checkWebsite(monitoredUrl);
@@ -152,17 +153,18 @@ async function executeRound(wsServer: WebSocketServer): Promise<{
     logError(`DB upsert validator error: ${err.stack || err}`);
   }
 
-  // c) persist the raw ping
+  // c) persist the raw ping **with latency**
   try {
     await prisma.validatorLog.create({
       data: {
         validatorId: localValidatorId,
-        site: monitoredUrl,
-        status: vote.status,
-        timestamp: new Date(timeStamp),
+        site:        monitoredUrl,
+        status:      vote.status,
+        latency,                     // ← newly persisted
+        timestamp:   new Date(timeStamp),
       },
     });
-    info(`Logged ping for ${monitoredUrl}`);
+    info(`Logged ping for ${monitoredUrl} (${latency}ms)`);
   } catch (err: any) {
     logError(`DB create validatorLog error: ${err.stack || err}`);
   }
@@ -181,9 +183,10 @@ async function executeRound(wsServer: WebSocketServer): Promise<{
   try {
     const total = peerAddresses.length + 1;
     const quorum = Math.ceil(total / 2);
-    consensusStatus = new Hub([validatorInstance], quorum).checkConsensus(
+    const result = new Hub([validatorInstance], quorum).checkConsensus(
       monitoredUrl
     ) as Status;
+    if (result) consensusStatus = result;
     info(`[Consensus] ${monitoredUrl} → ${consensusStatus} (${quorum}/${total})`);
   } catch (err: any) {
     logError(`Consensus computation error: ${err.stack || err}`);
@@ -191,9 +194,9 @@ async function executeRound(wsServer: WebSocketServer): Promise<{
 
   // f) build payload
   const payload = {
-    url: monitoredUrl,
+    url:       monitoredUrl,
     consensus: consensusStatus,
-    votes: [{ validatorId: localValidatorId, status: vote.status, weight: vote.weight }],
+    votes:     [{ validatorId: localValidatorId, status: vote.status, weight: vote.weight }],
     timeStamp,
   };
 

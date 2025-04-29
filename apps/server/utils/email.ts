@@ -1,6 +1,6 @@
-import nodemailer from "nodemailer";
-import { mailConfig } from "../src/config/mailConfig";
-import { info, error } from "../utils/logger";
+import nodemailer from 'nodemailer';
+import { mailConfig } from '../src/config/mailConfig';
+import { info, error } from '../utils/logger';
 
 const transporter = nodemailer.createTransport({
   host: mailConfig.SMTP_HOST,
@@ -19,7 +19,7 @@ export async function sendOtpEmail(
 ): Promise<void> {
   const linkSection = verificationLink
     ? `\nOr click here to verify: ${verificationLink}\n`
-    : "";
+    : '';
 
   const emailText = `
 Hello,
@@ -30,11 +30,11 @@ This is valid for 10 minutes.${linkSection}
 If you did not request this, please ignore.
 
 — Your Service Team
-  `.trim();
+`.trim();
 
   try {
     await transporter.sendMail({
-      from: mailConfig.MAIL_FROM,
+      from: mailConfig.MAIL_FROM,  
       to,
       subject: "Your Verification OTP",
       text: emailText,
