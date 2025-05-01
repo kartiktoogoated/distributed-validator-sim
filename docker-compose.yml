@@ -47,16 +47,35 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: runner     # use the final “runner” stage from your multi-stage Dockerfile
+      target: runner
     container_name: aggregator
     depends_on:
       - db
       - kafka
       - zookeeper
     ports:
-      - "3000:3000"     # maps host 3000 → container’s PORT
+      - "3000:3000"
     env_file:
       - .env.aggregator
+    networks:
+      - raftnet
+    restart: always
+
+  # ── Validator B (Node B) ─────────────────────────────────────────────────────
+  validator_b:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+    container_name: validator_b
+    depends_on:
+      - db
+      - kafka
+      - zookeeper
+    ports:
+      - "3001:3001"       
+    env_file:
+      - .env.nodeB       
     networks:
       - raftnet
     restart: always
@@ -73,7 +92,7 @@ services:
       - kafka
       - zookeeper
     ports:
-      - "3002:3002"   
+      - "3002:3002"      
     env_file:
       - .env.nodeC
     networks:
