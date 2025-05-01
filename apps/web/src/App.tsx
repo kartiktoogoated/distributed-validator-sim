@@ -6,7 +6,7 @@ import LandingPage from '@/pages/landing';
 import ClientDashboard from '@/pages/client-dashboard';
 import ValidatorDashboard from '@/pages/validator-dashboard';
 import LoginPage from '@/pages/login';
-import ProtectedRoute from '@/components/protected-route';
+import SignupPage from './pages/signup';
 
 function App() {
   return (
@@ -16,6 +16,7 @@ function App() {
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/signup" element={<SignupPage />} />
 
             {/* <-- directly render ValidatorDashboard (with its own nested <Routes>) */}
             <Route
