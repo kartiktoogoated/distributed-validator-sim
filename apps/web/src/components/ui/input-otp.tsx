@@ -1,69 +1,95 @@
-import * as React from 'react';
-import { DashIcon } from '@radix-ui/react-icons';
-import { OTPInput, OTPInputContext } from 'input-otp';
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// apps/web/src/components/ui/input-otp.tsx
+import * as React from "react"
+import { OTPInput, SlotProps } from "input-otp"
+import { cn } from "@/lib/utils"
 
-import { cn } from '@/lib/utils';
-
+//
+// 1) Wrapper around the main OTPInput container
+//
 const InputOTP = React.forwardRef<
-  React.ElementRef<typeof OTPInput>,
-  React.ComponentPropsWithoutRef<typeof OTPInput>
->(({ className, containerClassName, ...props }, ref) => (
-  <OTPInput
-    ref={ref}
-    containerClassName={cn(
-      'flex items-center gap-2 has-[:disabled]:opacity-50',
-      containerClassName
-    )}
-    className={cn('disabled:cursor-not-allowed', className)}
-    {...props}
-  />
-));
-InputOTP.displayName = 'InputOTP';
-
-const InputOTPGroup = React.forwardRef<
-  React.ElementRef<'div'>,
-  React.ComponentPropsWithoutRef<'div'>
+  HTMLDivElement,
+  React.ComponentProps<typeof OTPInput>
 >(({ className, ...props }, ref) => (
-  <div ref={ref} className={cn('flex items-center', className)} {...props} />
-));
-InputOTPGroup.displayName = 'InputOTPGroup';
+  <OTPInput
+    {...props}
+    // cast to any to satisfy the library’s own typing
+    ref={ref as any}
+    containerClassName={cn("flex items-center gap-2", className)}
+  />
+))
+InputOTP.displayName = "InputOTP"
+
+//
+// 2) Simple group container for the slots
+//
+const InputOTPGroup = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
+>(({ className, ...props }, ref) => (
+  <div
+    {...props}
+    ref={ref}
+    className={cn("flex items-center gap-2", className)}
+  />
+))
+InputOTPGroup.displayName = "InputOTPGroup"
+
+//
+// 3) The individual slot.  Here we:
+//    • Pull out the library’s slot-ref (so we can still pass it along)
+//    • Omit placeholderChar so React stops warning
+//    • Compose the slot-ref + forwarded ref into one “combinedRef”
+//
+type OTPInputSlotProps =
+  & Omit<SlotProps, "ref" | "placeholderChar">
+  & React.InputHTMLAttributes<HTMLInputElement>
 
 const InputOTPSlot = React.forwardRef<
-  React.ElementRef<'div'>,
-  React.ComponentPropsWithoutRef<'div'> & { index: number }
->(({ index, className, ...props }, ref) => {
-  const inputOTPContext = React.useContext(OTPInputContext);
-  const { char, hasFakeCaret, isActive } = inputOTPContext.slots[index];
+  HTMLInputElement,
+  OTPInputSlotProps
+>(({ char, hasFakeCaret, isActive, className, ...rest }, forwardedRef) => {
+  // library actually hands you its ref in rest.ref
+  const { ref: slotRef, placeholderChar, ...inputProps } = rest as any
+
+  const combinedRef = (el: HTMLInputElement | null) => {
+    // 1) let the library track its own ref
+    if (typeof slotRef === "function") slotRef(el)
+    else if (slotRef?.current !== undefined) slotRef.current = el
+
+    // 2) let your forwardedRef track it too
+    if (typeof forwardedRef === "function") forwardedRef(el)
+    else if (forwardedRef?.current !== undefined) {
+      ;(forwardedRef as React.MutableRefObject<HTMLInputElement | null>).current = el
+    }
+  }
 
   return (
     <div
-      ref={ref}
       className={cn(
-        'relative flex h-9 w-9 items-center justify-center border-y border-r border-input text-sm shadow-sm transition-all first:rounded-l-md first:border-l last:rounded-r-md',
-        isActive && 'z-10 ring-1 ring-ring',
+        "relative w-10 h-14 flex items-center justify-center border-2 rounded-md text-base transition-all duration-200",
+        "border-border bg-background text-foreground",
+        isActive && "ring-2 ring-offset-2 ring-primary",
         className
       )}
-      {...props}
     >
+      <input
+        {...(inputProps as React.InputHTMLAttributes<HTMLInputElement>)}
+        ref={combinedRef}
+        className={cn(
+          "w-full h-full text-center bg-transparent focus:outline-none focus:ring-0"
+        )}
+      />
       {char}
       {hasFakeCaret && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className="h-4 w-px animate-caret-blink bg-foreground duration-1000" />
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none animate-caret-blink">
+          <div className="w-px h-8 bg-foreground" />
         </div>
       )}
     </div>
-  );
-});
-InputOTPSlot.displayName = 'InputOTPSlot';
+  )
+})
+InputOTPSlot.displayName = "InputOTPSlot"
 
-const InputOTPSeparator = React.forwardRef<
-  React.ElementRef<'div'>,
-  React.ComponentPropsWithoutRef<'div'>
->(({ ...props }, ref) => (
-  <div ref={ref} role="separator" {...props}>
-    <DashIcon />
-  </div>
-));
-InputOTPSeparator.displayName = 'InputOTPSeparator';
-
-export { InputOTP, InputOTPGroup, InputOTPSlot, InputOTPSeparator };
+export { InputOTP, InputOTPGroup, InputOTPSlot }
