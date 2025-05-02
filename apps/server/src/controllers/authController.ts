@@ -3,7 +3,7 @@ import prisma from "../prismaClient";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { info } from "../../utils/logger";
-import { publishOtpRequest } from "../services/producer";
+import { sendOtpEmail } from "../../utils/email";
 
 const JWT_SECRET = process.env.JWT_SECRET!;
 
@@ -59,12 +59,8 @@ export async function signup(req: Request, res: Response): Promise<void> {
     }
 
     // 5) Enqueue OTP email via Kafka (no verificationLink yet)
-    await publishOtpRequest({
-      userId: pendingRecord.id.toString(),
-      email: pendingRecord.email,
-      otp,
-    });
-    info(`Enqueued OTP email for ${email}`);
+    await sendOtpEmail(pendingRecord.email, otp);
+    info(`Sent OTP email directly to ${email}`);
 
     // 6) Response
     res.status(201).json({

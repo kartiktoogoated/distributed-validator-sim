@@ -115,7 +115,7 @@ importers:
         specifier: ^2.2.4
         version: 2.2.4
       nodemailer:
-        specifier: ^6.10.0
+        specifier: ^6.10.1
         version: 6.10.1
       ping:
         specifier: ^0.4.4
