@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // src/pages/signup.tsx
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
@@ -33,13 +34,18 @@ const SignupPage = () => {
     }
     setIsLoading(true);
     try {
-      await fetch('/api/auth/signup', {
+      const res = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password: 'default123', confirmPassword: 'default123' }),
       });
-      toast({ title: 'OTP Sent', description: 'Check your email for the verification code' });
-      setStep('otp');
+      const data = await res.json();
+      if (res.ok) {
+        toast({ title: 'OTP Sent', description: 'Check your email for the verification code' });
+        setStep('otp');
+      } else {
+        toast({ title: 'Error', description: data.message || 'Failed to send OTP', variant: 'destructive' });
+      }
     } catch {
       toast({ title: 'Error', description: 'Failed to send OTP', variant: 'destructive' });
     } finally {
@@ -59,11 +65,14 @@ const SignupPage = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, otp }),
       });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        const { message } = await res.json();
+        throw new Error(message || 'Invalid or expired OTP');
+      }
       toast({ title: 'Success!', description: 'Your account has been created.' });
       navigate('/login');
-    } catch {
-      toast({ title: 'Error', description: 'Invalid or expired OTP', variant: 'destructive' });
+    } catch (error: any) {
+      toast({ title: 'Error', description: error.message, variant: 'destructive' });
     } finally {
       setIsLoading(false);
     }
@@ -122,7 +131,7 @@ const SignupPage = () => {
                 <div className="flex justify-center">
                   <InputOTP
                     value={otp}
-                    onChange={setOtp}
+                    onChange={(value: string) => setOtp(value)}  // Ensure OTP state is updated
                     maxLength={6}
                     render={({ slots }) => (
                       <InputOTPGroup>
@@ -138,13 +147,17 @@ const SignupPage = () => {
                   <Button
                     variant="link"
                     className="p-0 h-auto"
-                    onClick={() => { setStep('email'); setOtp(''); }}
+                    onClick={handleSendOTP} // Resend OTP
                   >
-                    Try again
+                    Resend OTP
                   </Button>
                 </p>
               </div>
-              <Button onClick={handleVerifyOTP} className="w-full" disabled={isLoading}>
+              <Button
+                onClick={handleVerifyOTP}
+                className="w-full"
+                disabled={isLoading || otp.length !== 6}
+              >
                 {isLoading ? 'Verifying...' : 'Verify & Create Account'}
               </Button>
             </div>
