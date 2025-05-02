@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,11 +14,12 @@ import {
 interface AddSiteDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAdd: (url: string) => void;
+  onAdd: (url: string, description: string) => void;
 }
 
 const AddSiteDialog = ({ open, onOpenChange, onAdd }: AddSiteDialogProps) => {
   const [url, setUrl] = useState('');
+  const [description, setDescription] = useState('');
   const [isValidating, setIsValidating] = useState(false);
   const [error, setError] = useState('');
 
@@ -33,7 +33,7 @@ const AddSiteDialog = ({ open, onOpenChange, onAdd }: AddSiteDialogProps) => {
 
     try {
       new URL(url);
-    } catch (e) {
+    } catch {
       setError('Please enter a valid URL including http:// or https://');
       return;
     }
@@ -47,7 +47,7 @@ const AddSiteDialog = ({ open, onOpenChange, onAdd }: AddSiteDialogProps) => {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${localStorage.getItem('token')}`,
         },
-        body: JSON.stringify({ url }),
+        body: JSON.stringify({ url, description }),
       });
 
       const data = await res.json();
@@ -55,12 +55,13 @@ const AddSiteDialog = ({ open, onOpenChange, onAdd }: AddSiteDialogProps) => {
       if (!res.ok) {
         setError(data.message || 'Failed to add website');
       } else {
-        onAdd(url); // Update local list if needed
+        onAdd(url, description);
         setUrl('');
+        setDescription('');
         setError('');
         onOpenChange(false);
       }
-    } catch (err) {
+    } catch {
       setError('Unexpected error occurred');
     } finally {
       setIsValidating(false);
@@ -73,7 +74,7 @@ const AddSiteDialog = ({ open, onOpenChange, onAdd }: AddSiteDialogProps) => {
         <DialogHeader>
           <DialogTitle>Add a New Website</DialogTitle>
           <DialogDescription>
-            Enter the URL of the website you want to monitor
+            Enter the URL and a short description for the website you want to monitor
           </DialogDescription>
         </DialogHeader>
 
@@ -90,30 +91,19 @@ const AddSiteDialog = ({ open, onOpenChange, onAdd }: AddSiteDialogProps) => {
                   setError('');
                 }}
               />
-              {error && <p className="text-sm text-destructive">{error}</p>}
             </div>
 
             <div className="space-y-2">
-              <Label>Monitoring Options</Label>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex items-center space-x-2">
-                  <input type="checkbox" id="uptime" className="rounded" defaultChecked disabled />
-                  <Label htmlFor="uptime" className="text-sm font-normal">Uptime</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <input type="checkbox" id="response-time" className="rounded" defaultChecked disabled />
-                  <Label htmlFor="response-time" className="text-sm font-normal">Response Time</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <input type="checkbox" id="ssl" className="rounded" defaultChecked disabled />
-                  <Label htmlFor="ssl" className="text-sm font-normal">SSL Certificate</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <input type="checkbox" id="content" className="rounded" defaultChecked disabled />
-                  <Label htmlFor="content" className="text-sm font-normal">Content Check</Label>
-                </div>
-              </div>
+              <Label htmlFor="description">Description (optional)</Label>
+              <Input
+                id="description"
+                placeholder="e.g. My blog homepage"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
             </div>
+
+            {error && <p className="text-sm text-destructive">{error}</p>}
           </div>
 
           <DialogFooter className="mt-4">
