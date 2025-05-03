@@ -40,7 +40,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   }, []);
 
-  const login = async (email: string, password: string, type: 'validator' | 'client') => {
+  const login = async (email: string, _password: string, type: 'validator' | 'client') => {
     // In a real app, you would call your API here
     // This is just a demo, so we'll simulate a successful login
     

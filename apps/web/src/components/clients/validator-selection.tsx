@@ -31,7 +31,7 @@ const validators = [
 const ValidatorSelection = () => {
   const [selectedRegions, setSelectedRegions] = useState(regions);
   const [selectedValidators, setSelectedValidators] = useState(validators);
-  const { toast } = useToast();
+  useToast();
 
   const handleRegionSelect = (regionId: string, checked: boolean) => {
     // Update regions
@@ -58,12 +58,6 @@ const ValidatorSelection = () => {
     );
   };
 
-  const handleSave = () => {
-    toast({
-      title: 'Coming Soon',
-      description: 'Validator selection will be available in the next update.',
-    });
-  };
 
   return (
     <div className="space-y-4">
