@@ -83,7 +83,7 @@ export default function DashboardLayout({
       <div className="p-6">
         <Link to="/" className="flex items-center gap-2">
           <Activity className="h-6 w-6 text-primary" />
-          <span className="text-xl font-bold text-foreground">DePin</span>
+          <span className="text-xl font-bold text-foreground">DeepFry</span>
         </Link>
       </div>
       <div className="flex flex-col gap-1 px-3 py-2">
@@ -170,7 +170,7 @@ export default function DashboardLayout({
             </Sheet>
             <Link to="/" className="flex items-center gap-2 mr-4">
               <Activity className="h-6 w-6 text-primary" />
-              <span className="font-bold text-foreground">DePin</span>
+              <span className="font-bold text-foreground">DeepFry</span>
             </Link>
             <div className="flex-1"></div>
             <TooltipProvider>

@@ -27,7 +27,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   // Check for existing session on load
   useEffect(() => {
-    const storedUser = localStorage.getItem('depin-user');
+    const storedUser = localStorage.getItem('deepfry-user');
     if (storedUser) {
       try {
         const parsedUser = JSON.parse(storedUser);
@@ -35,7 +35,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setIsAuthenticated(true);
       } catch (error) {
         console.error('Failed to parse stored user', error);
-        localStorage.removeItem('depin-user');
+        localStorage.removeItem('deepfry-user');
       }
     }
   }, []);
@@ -55,13 +55,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setIsAuthenticated(true);
     
     // Store in localStorage for persistence
-    localStorage.setItem('depin-user', JSON.stringify(user));
+    localStorage.setItem('deepfry-user', JSON.stringify(user));
   };
 
   const logout = () => {
     setUser(null);
     setIsAuthenticated(false);
-    localStorage.removeItem('depin-user');
+    localStorage.removeItem('deepfry-user');
   };
 
   return (

@@ -31,13 +31,13 @@ const Header = () => {
 
         {/* Desktop Navigation */}
         <nav className="hidden md:flex items-center gap-6">
-          <Link to="#learn-more" className="text-muted-foreground hover:text-foreground transition-colors">
-            How It Works
+          <Link to="/pricing" className="text-muted-foreground hover:text-foreground transition-colors">
+            Pricing
           </Link>
-          <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors">
+          <Link to="/about" className="text-muted-foreground hover:text-foreground transition-colors">
             About
           </Link>
-          <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors">
+          <Link to="/docs" className="text-muted-foreground hover:text-foreground transition-colors">
             Docs
           </Link>
         </nav>
@@ -77,21 +77,21 @@ const Header = () => {
         <div className="md:hidden border-b">
           <div className="container mx-auto px-4 py-4 flex flex-col space-y-4">
             <Link 
-              to="#learn-more" 
+              to="/pricing" 
               className="py-2 text-muted-foreground hover:text-foreground transition-colors"
               onClick={() => setIsMobileMenuOpen(false)}
             >
-              How It Works
+              Pricing
             </Link>
             <Link 
-              to="/" 
+              to="/about" 
               className="py-2 text-muted-foreground hover:text-foreground transition-colors"
               onClick={() => setIsMobileMenuOpen(false)}
             >
               About
             </Link>
             <Link 
-              to="/" 
+              to="/docs" 
               className="py-2 text-muted-foreground hover:text-foreground transition-colors"
               onClick={() => setIsMobileMenuOpen(false)}
             >

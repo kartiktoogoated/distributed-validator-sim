@@ -39,7 +39,7 @@ const LoginPage = () => {
 
       localStorage.setItem('token', data.token);
       toast({ title: 'Success!', description: 'You are now logged in.' });
-      navigate('/client-dashboard');
+      navigate('/validator-dashboard');
     } catch (err: any) {
       toast({
         title: 'Login failed',
@@ -63,7 +63,7 @@ const LoginPage = () => {
       <div className="mb-8 text-center">
         <Link to="/" className="inline-flex items-center gap-2 text-2xl font-bold">
           <Activity className="h-6 w-6 text-primary" />
-          DePin
+          DeepFry
         </Link>
         <p className="text-muted-foreground mt-2">Distributed Validator Network</p>
       </div>

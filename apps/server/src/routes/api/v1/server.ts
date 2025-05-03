@@ -20,7 +20,7 @@ import { RaftNode } from "../../../core/raft";
 import { initRaftRouter } from "./raftServer";
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = Number(process.env.PORT);
 
 // ── Security & parsing ─────────────────
 app.use(helmet());

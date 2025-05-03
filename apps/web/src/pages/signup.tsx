@@ -89,7 +89,7 @@ const SignupPage = () => {
       {/* Branding */}
       <div className="mb-8 text-center">
         <Link to="/" className="inline-flex items-center gap-2 text-2xl font-bold">
-          <Activity className="h-6 w-6 text-primary" /> DePin
+          <Activity className="h-6 w-6 text-primary" /> DeepFry
         </Link>
         <p className="text-muted-foreground mt-2">Distributed Validator Network</p>
       </div>

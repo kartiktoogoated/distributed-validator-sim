@@ -45,22 +45,22 @@ const Footer = () => {
             <h3 className="font-semibold text-lg mb-4">Product</h3>
             <ul className="space-y-3">
               <li>
-                <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors">
-                  Features
-                </Link>
-              </li>
-              <li>
-                <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors">
+                <Link to="/pricing" className="text-muted-foreground hover:text-foreground transition-colors">
                   Pricing
                 </Link>
               </li>
               <li>
-                <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors">
+                <Link to="/about" className="text-muted-foreground hover:text-foreground transition-colors">
+                  About Us
+                </Link>
+              </li>
+              <li>
+                <Link to="/roadmap" className="text-muted-foreground hover:text-foreground transition-colors">
                   Roadmap
                 </Link>
               </li>
               <li>
-                <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors">
+                <Link to="/changelog" className="text-muted-foreground hover:text-foreground transition-colors">
                   Changelog
                 </Link>
               </li>
@@ -71,22 +71,22 @@ const Footer = () => {
             <h3 className="font-semibold text-lg mb-4">Resources</h3>
             <ul className="space-y-3">
               <li>
-                <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors">
+                <Link to="/docs" className="text-muted-foreground hover:text-foreground transition-colors">
                   Documentation
                 </Link>
               </li>
               <li>
-                <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors">
+                <Link to="/guides" className="text-muted-foreground hover:text-foreground transition-colors">
                   Guides
                 </Link>
               </li>
               <li>
-                <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors">
+                <Link to="/api" className="text-muted-foreground hover:text-foreground transition-colors">
                   API Reference
                 </Link>
               </li>
               <li>
-                <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors">
+                <Link to="/support" className="text-muted-foreground hover:text-foreground transition-colors">
                   Support
                 </Link>
               </li>
@@ -117,13 +117,13 @@ const Footer = () => {
             © {new Date().getFullYear()} DePin. All rights reserved.
           </p>
           <div className="flex gap-6 text-sm">
-            <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors">
+            <Link to="/terms" className="text-muted-foreground hover:text-foreground transition-colors">
               Terms
             </Link>
-            <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors">
+            <Link to="/privacy" className="text-muted-foreground hover:text-foreground transition-colors">
               Privacy
             </Link>
-            <Link to="/" className="text-muted-foreground hover:text-foreground transition-colors">
+            <Link to="/cookies" className="text-muted-foreground hover:text-foreground transition-colors">
               Cookies
             </Link>
           </div>

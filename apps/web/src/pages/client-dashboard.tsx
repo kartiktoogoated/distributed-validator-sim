@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { useState } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import DashboardLayout from '@/components/layout/dashboard-layout';
