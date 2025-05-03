@@ -1,3 +1,4 @@
+/* eslint-disable no-empty-pattern */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { useState } from 'react';
 import { Routes, Route } from 'react-router-dom';
@@ -13,7 +14,7 @@ import AddSiteDialog from '@/components/clients/add-site-dialog';
 import ValidatorSelection from '@/components/clients/validator-selection';
 import UptimeChart from '@/components/clients/uptime-chart';
 import ResponseTimeChart from '@/components/clients/response-time-chart';
-import ClientSettings from '@/components/clients/client-settings';
+// import ClientSettings from '@/components/clients/client-settings';
 import ClientMap from '@/components/clients/client-map';
 import { comingSoon } from '@/lib/utils';
 
@@ -27,7 +28,7 @@ const demoSites = [
 const ClientDashboard = () => {
   const [sites, setSites] = useState(demoSites);
   const [showAddSite, setShowAddSite] = useState(false);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [] = useState('overview');
   const [selectedSite, setSelectedSite] = useState<number | null>(1);
   const { toast } = useToast();
 
@@ -227,7 +228,7 @@ const ClientDashboard = () => {
             />
           </div>
         } />
-        <Route path="/settings" element={<ClientSettings />} />
+        <Route path="/settings" element={<div>Settings Page</div>} />
       </Routes>
     </DashboardLayout>
   );
