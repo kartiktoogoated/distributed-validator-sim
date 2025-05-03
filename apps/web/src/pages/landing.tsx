@@ -11,7 +11,7 @@ import CryptoCard from '@/components/web3/crypto-card';
 
 const LandingPage = () => {
   useEffect(() => {
-    document.title = 'DePin - Distributed Validator Network';
+    document.title = 'DeepFry - Distributed Validator Network';
   }, []);
 
   return (
