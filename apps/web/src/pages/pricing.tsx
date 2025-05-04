@@ -9,6 +9,14 @@ import Footer from '@/components/layout/footer';
 
 const PricingPage = () => {
   const [userType, setUserType] = useState<'client' | 'validator'>('client');
+  const [isAnimating, setIsAnimating] = useState(false);
+
+  const handleTypeChange = (type: 'client' | 'validator') => {
+    if (type === userType) return;
+    setIsAnimating(true);
+    setUserType(type);
+    setTimeout(() => setIsAnimating(false), 500);
+  };
 
   const clientPlans = [
     {
@@ -124,30 +132,34 @@ const PricingPage = () => {
             <div className="inline-flex items-center p-1 bg-muted rounded-lg mb-8">
               <Button
                 variant={userType === 'client' ? 'default' : 'ghost'}
-                onClick={() => setUserType('client')}
-                className="relative"
+                onClick={() => handleTypeChange('client')}
+                className={`relative pricing-toggle ${userType === 'client' ? 'hover-glow' : ''}`}
               >
                 Website Monitoring
                 {userType === 'client' && (
-                  <span className="absolute -top-2 -right-2 w-2 h-2 bg-primary rounded-full" />
+                  <span className="absolute -top-2 -right-2 w-2 h-2 bg-primary rounded-full animate-pulse" />
                 )}
               </Button>
               <Button
                 variant={userType === 'validator' ? 'default' : 'ghost'}
-                onClick={() => setUserType('validator')}
-                className="relative"
+                onClick={() => handleTypeChange('validator')}
+                className={`relative pricing-toggle ${userType === 'validator' ? 'hover-glow' : ''}`}
               >
                 Validator Node
                 {userType === 'validator' && (
-                  <span className="absolute -top-2 -right-2 w-2 h-2 bg-primary rounded-full" />
+                  <span className="absolute -top-2 -right-2 w-2 h-2 bg-primary rounded-full animate-pulse" />
                 )}
               </Button>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {activePlans.map((plan) => (
-              <Card key={plan.name} className={`relative ${plan.popular ? 'border-primary shadow-lg' : ''}`}>
+          <div className={`grid grid-cols-1 md:grid-cols-3 gap-8 ${isAnimating ? 'opacity-0' : 'opacity-100'} transition-opacity duration-300`}>
+            {activePlans.map((plan, index) => (
+              <Card 
+                key={plan.name} 
+                className={`pricing-card relative hover-glow ${plan.popular ? 'border-primary shadow-lg' : ''}`}
+                style={{ '--animation-order': index } as React.CSSProperties}
+              >
                 {plan.popular && (
                   <Badge className="absolute -top-2 -right-2 bg-primary">Popular</Badge>
                 )}
@@ -170,7 +182,7 @@ const PricingPage = () => {
                   </ul>
                 </CardContent>
                 <CardFooter>
-                  <Button className="w-full" asChild>
+                  <Button className="w-full hover:scale-105 transition-transform" asChild>
                     <Link to="/signup">{plan.cta}</Link>
                   </Button>
                 </CardFooter>
@@ -183,7 +195,7 @@ const PricingPage = () => {
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto mb-8">
               Need a custom solution? Contact our sales team for a tailored package.
             </p>
-            <Button size="lg" variant="outline" asChild>
+            <Button size="lg" variant="outline" className="hover:scale-105 transition-transform" asChild>
               <Link to="/contact">Contact Sales</Link>
             </Button>
           </div>
