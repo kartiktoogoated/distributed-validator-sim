@@ -25,11 +25,14 @@ const PORT = Number(process.env.PORT);
 // ── Security & parsing ─────────────────
 app.use(helmet());
 app.use(cors());
-app.use(express.json());  // global JSON parser
+app.use(express.json());
 
 // ── HTTP + WS setup ────────────────────
 const server = http.createServer(app);
-const wss    = new WebSocketServer({ server });
+
+// ▶️ Listen for WebSocket upgrades on `/api/ws`
+//    — Vite proxy (ws: true under `/api`) will forward wss://…/api/ws → this
+const wss = new WebSocketServer({ server, path: "/api/ws" });
 
 // ── Raft setup ─────────────────────────
 if (!process.env.VALIDATOR_ID || !process.env.PEERS) {
@@ -37,13 +40,13 @@ if (!process.env.VALIDATOR_ID || !process.env.PEERS) {
 }
 
 const nodeId = Number(process.env.VALIDATOR_ID);
-const peers  = process.env.PEERS.split(",").map(p =>
+const peers = process.env.PEERS.split(",").map((p) =>
   p.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "")
 );
 
 export const raftNode = new RaftNode(nodeId, peers, (cmd) => {
   const message = JSON.stringify({ type: "raft-commit", data: cmd });
-  wss.clients.forEach(c =>
+  wss.clients.forEach((c) =>
     c.readyState === c.OPEN && c.send(message)
   );
 });
@@ -61,12 +64,12 @@ app.use(
   })
 );
 
-// ── Your routes ─────────────────────────
-app.use("/api/auth",       authRouter);
-app.use("/api",            websiteRouter);
-app.use("/api/simulate",   createSimulationRouter(wss));
-app.use("/api/status",     createStatusRouter(wss));
-app.use("/api/logs",       createLogsRouter());
+// ── Your REST routes ────────────────────
+app.use("/api/auth", authRouter);
+app.use("/api", websiteRouter);
+app.use("/api/simulate", createSimulationRouter(wss));
+app.use("/api/status", createStatusRouter(wss));
+app.use("/api/logs", createLogsRouter());
 
 // ── Kafka producer ──────────────────────
 startKafkaProducer().catch((err) => {
