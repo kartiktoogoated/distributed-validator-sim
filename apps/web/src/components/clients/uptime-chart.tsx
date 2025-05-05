@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable react-hooks/exhaustive-deps */
 import { useEffect, useState } from 'react';
 import {
   LineChart,
@@ -17,117 +17,78 @@ interface UptimeChartProps {
   siteId: number;
 }
 
-// Generate fake uptime data
-const generateUptimeData = (days = 30) => {
-  const data = [];
-  const today = new Date();
-  
-  for (let i = days; i >= 0; i--) {
-    const date = new Date();
-    date.setDate(today.getDate() - i);
-    
-    // Generate mostly high uptime values with occasional dips
-    let uptime = 100;
-    if (i % 7 === 0) {
-      uptime = Math.round(Math.max(85, 100 - Math.random() * 15));
-    } else if (i % 11 === 0) {
-      uptime = Math.round(Math.max(70, 100 - Math.random() * 30));
-    } else {
-      uptime = Math.round(Math.max(98, 100 - Math.random() * 2));
-    }
-    
-    data.push({
-      date,
-      uptime,
-      formattedDate: format(date, 'MMM dd'),
-    });
-  }
-  
-  return data;
-};
+interface HistoryLog {
+  status: 'UP' | 'DOWN';
+  timestamp: string;
+}
 
 const UptimeChart = ({ siteId }: UptimeChartProps) => {
-  const [data, setData] = useState<any[]>([]);
-  
+  const [data, setData] = useState<{ date: string; uptime: number }[]>([]);
+  const token = localStorage.getItem('token')!;
+  const headers = { Authorization: `Bearer ${token}` };
+
   useEffect(() => {
-    setData(generateUptimeData());
+    const fetchHistory = async () => {
+      const res = await fetch(`/api/websites/${siteId}/history?limit=1000`, { headers });
+      if (!res.ok) return;
+      const json = await res.json();
+      const logs: HistoryLog[] = json.logs;
+
+      // group by day
+      const byDay: Record<string, { up: number; total: number }> = {};
+      logs.forEach((l) => {
+        const day = format(new Date(l.timestamp), 'MMM dd');
+        if (!byDay[day]) byDay[day] = { up: 0, total: 0 };
+        byDay[day].total++;
+        if (l.status === 'UP') byDay[day].up++;
+      });
+
+      const chart = Object.entries(byDay)
+        .map(([date, { up, total }]) => ({
+          date,
+          uptime: total > 0 ? Math.round((up / total) * 100) : 0,
+        }))
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+      setData(chart);
+    };
+
+    fetchHistory();
   }, [siteId]);
-  
-  // Custom tooltip
-  const CustomTooltip = ({ active, payload, label }: TooltipProps<number, string>) => {
-    if (active && payload && payload.length) {
-      const uptimeValue = payload[0].value as number;
-      const dotColor =
-        uptimeValue >= 99 ? 'text-green-500' :
-        uptimeValue >= 95 ? 'text-yellow-500' :
-        'text-red-500';
-      const statusText =
-        uptimeValue >= 99 ? 'Good' :
-        uptimeValue >= 95 ? 'Warning' :
-        'Critical';
-      
-      return (
-        <Card>
-          <CardContent className="p-4 space-y-1">
-            <p className="text-sm font-medium">{label}</p>
-            <p className="text-sm">
-              Uptime: <span className="font-semibold">{uptimeValue}%</span>
-            </p>
-            <div className="flex items-center gap-1">
-              <div className={dotColor}>●</div>
-              <span className="text-xs">{statusText}</span>
-            </div>
-          </CardContent>
-        </Card>
-      );
-    }
-    return null;
+
+  const TooltipContent = ({ active, payload, label }: TooltipProps<number, string>) => {
+    if (!active || !payload?.length) return null;
+    const v = payload[0].value as number;
+    return (
+      <Card>
+        <CardContent className="p-2 bg-card border border-border">
+          <p className="text-sm">{label}</p>
+          <p className="text-base font-semibold">{v}% uptime</p>
+        </CardContent>
+      </Card>
+    );
   };
-  
+
   return (
     <div className="w-full h-[300px]">
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data} margin={{ top: 5, right: 30, left: 10, bottom: 5 }}>
-          {/* grid lines */}
-          <CartesianGrid
-            strokeDasharray="3 3"
-            stroke="hsl(var(--border))"
-            opacity={0.3}
-          />
-          
-          {/* X axis */}
-          <XAxis 
-            dataKey="formattedDate"
+      <ResponsiveContainer>
+        <LineChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
+          <XAxis
+            dataKey="date"
             tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
-            tickLine={false}
             axisLine={{ stroke: 'hsl(var(--border))' }}
-            interval="preserveStartEnd"
+            tickLine={false}
           />
-          
-          {/* Y axis */}
-          <YAxis 
+          <YAxis
             domain={[0, 100]}
             tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
-            tickLine={false}
             axisLine={{ stroke: 'hsl(var(--border))' }}
-            tickFormatter={v => `${v}%`}
+            tickLine={false}
+            tickFormatter={(v) => `${v}%`}
           />
-
-          <Tooltip content={<CustomTooltip />} />
-
-          {/* uptime line */}
-          <Line 
-            type="linear"
-            dataKey="uptime"
-            stroke="hsl(var(--primary))"
-            strokeWidth={2}
-            dot={false}
-            activeDot={{
-              r: 6,
-              stroke: 'hsl(var(--background))',
-              strokeWidth: 2,
-            }}
-          />
+          <Tooltip content={TooltipContent} cursor={{ stroke: 'hsl(var(--primary))', strokeWidth: 2 }} />
+          <Line type="monotone" dataKey="uptime" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
         </LineChart>
       </ResponsiveContainer>
     </div>

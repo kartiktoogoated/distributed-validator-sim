@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // src/components/validators/ping-chart.tsx
 import { useState, useEffect, useRef } from 'react'
 import {
@@ -19,14 +20,13 @@ interface LogEntry {
 
 interface MinuteBucket {
   formattedTime: string
-  pingTime: number
+  pingTime: number | null
+  isDown?: boolean
 }
 
-// ─── module-level cache ──────────────────────────────────────────────
 let historyCache: LogEntry[] | null = null
 let historyCacheTime = 0
 
-// Turn ISO → "HH:MM"
 const formatLabel = (iso: string) => {
   const d = new Date(iso)
   const hh = String(d.getHours()).padStart(2, '0')
@@ -40,7 +40,19 @@ const CustomTooltip = ({
   label,
 }: TooltipProps<number, string>) => {
   if (active && payload && payload.length) {
-    const pingTime = payload[0].value as number
+    const entry = payload[0].payload as MinuteBucket
+    if (entry.isDown) {
+      return (
+        <Card>
+          <CardContent className="p-4 space-y-1">
+            <p className="text-sm font-medium">{label}</p>
+            <p className="text-sm font-semibold text-red-500">Down</p>
+          </CardContent>
+        </Card>
+      )
+    }
+
+    const pingTime = entry.pingTime!
     let quality: string, qualityColor: string
     if (pingTime < 60) {
       quality = 'Excellent'
@@ -55,6 +67,7 @@ const CustomTooltip = ({
       quality = 'Poor'
       qualityColor = 'text-red-500'
     }
+
     return (
       <Card>
         <CardContent className="p-4 space-y-1">
@@ -73,89 +86,115 @@ const CustomTooltip = ({
   return null
 }
 
-const PingChart = () => {
+export interface PingChartProps {
+  isStarted: boolean
+}
+
+const PingChart: React.FC<PingChartProps> = ({ isStarted }) => {
   const [data, setData] = useState<MinuteBucket[]>([])
   const wsRef = useRef<WebSocket>()
 
-  // load last 60 logs, but only once per minute
-  const loadHistory = async () => {
-    const now = Date.now()
-    if (historyCache && now - historyCacheTime < 60_000) {
-      // reuse cached
-      const slice = historyCache
-        .sort((a, b) =>
-          new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-        )
-        .slice(-60)
-        .map((log) => ({
-          formattedTime: formatLabel(log.timestamp),
-          pingTime: log.latency,
-        }))
-      setData(slice)
-      return
-    }
-
-    try {
-      const res = await fetch('/api/logs')
-      if (res.status === 429) {
-        console.warn('PingChart: rate-limited, skip this fetch')
-        return
-      }
-      const json = await res.json()
-      if (json.success) {
-        historyCache = json.logs
-        historyCacheTime = now
-        const slice = (json.logs as LogEntry[])
-          .sort((a, b) =>
-            new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-          )
+  // 1) initial load once:
+  useEffect(() => {
+    const loadHistory = async () => {
+      const now = Date.now()
+      if (historyCache && now - historyCacheTime < 5_000) {
+        const slice = historyCache
+          .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
           .slice(-60)
           .map((log) => ({
             formattedTime: formatLabel(log.timestamp),
             pingTime: log.latency,
+            isDown: false,
           }))
         setData(slice)
+        return
       }
-    } catch (e) {
-      console.error('Failed to load logs for chart', e)
+      try {
+        const res = await fetch('/api/logs')
+        if (res.status === 429) return
+        const json = await res.json()
+        if (json.success) {
+          historyCache = json.logs
+          historyCacheTime = now
+          const slice = (json.logs as LogEntry[])
+            .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+            .slice(-60)
+            .map((log) => ({
+              formattedTime: formatLabel(log.timestamp),
+              pingTime: log.latency,
+              isDown: false,
+            }))
+          setData(slice)
+        }
+      } catch (e) {
+        console.error('Failed to load logs for chart', e)
+      }
     }
-  }
 
-  useEffect(() => {
     loadHistory()
+  }, [])
 
-    // live WS hookup
+  // 2) polling only when started
+  useEffect(() => {
+    if (!isStarted) return
+    const id = setInterval(() => {
+      // same loadHistory logic or call the function above
+      fetch('/api/logs')
+        .then((r) => (r.status === 429 ? null : r.json()))
+        .then((json: any) => {
+          if (json?.success) {
+            historyCache = json.logs
+            historyCacheTime = Date.now()
+            const slice = (json.logs as LogEntry[])
+              .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+              .slice(-60)
+              .map((log) => ({
+                formattedTime: formatLabel(log.timestamp),
+                pingTime: log.latency,
+                isDown: false,
+              }))
+            setData(slice)
+          }
+        })
+        .catch(() => {})
+    }, 30_000)
+    return () => clearInterval(id)
+  }, [isStarted])
+
+  // 3) websocket only updates UI when started
+  useEffect(() => {
     const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    const socket = new WebSocket(`${proto}://${window.location.host}/api`)
+    const socket = new WebSocket(`${proto}://${window.location.host}/api/ws`)
     wsRef.current = socket
 
-    socket.onopen = () => console.info('PingChart WS open')
-    socket.onerror = (err) => console.error('PingChart WS error', err)
-
     socket.onmessage = (ev) => {
+      if (!isStarted) return
       try {
         const msg = JSON.parse(ev.data) as {
           timeStamp: string
-          responseTime: number
+          consensus: 'UP' | 'DOWN'
+          responseTime?: number
         }
+        const isDown = msg.consensus === 'DOWN'
+        const pingTime = isDown ? null : msg.responseTime ?? null
         setData((prev) => [
           ...prev.slice(-59),
           {
             formattedTime: formatLabel(msg.timeStamp),
-            pingTime: msg.responseTime,
+            pingTime,
+            isDown,
           },
         ])
       } catch {
-        // ignore non-ping messages
+        // ignore
       }
     }
 
-    const id = setInterval(loadHistory, 60_000)
     return () => {
-      clearInterval(id)
       socket.close()
     }
-  }, [])
+  }, [isStarted])
 
   return (
     <div className="w-full h-[300px]">
@@ -164,11 +203,7 @@ const PingChart = () => {
           data={data}
           margin={{ top: 5, right: 30, left: 10, bottom: 5 }}
         >
-          <CartesianGrid
-            strokeDasharray="3 3"
-            stroke="hsl(var(--border))"
-            opacity={0.3}
-          />
+          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
           <XAxis
             dataKey="formattedTime"
             tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
@@ -176,7 +211,7 @@ const PingChart = () => {
             axisLine={{ stroke: 'hsl(var(--border))' }}
           />
           <YAxis
-            domain={['dataMin - 10', 'dataMax + 10']}
+            domain={[0, 'dataMax + 10']}
             tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
             tickLine={false}
             axisLine={{ stroke: 'hsl(var(--border))' }}
@@ -199,6 +234,7 @@ const PingChart = () => {
               stroke: 'hsl(var(--background))',
               strokeWidth: 2,
             }}
+            connectNulls={false}
           />
         </LineChart>
       </ResponsiveContainer>

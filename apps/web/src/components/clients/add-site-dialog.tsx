@@ -11,10 +11,23 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 
+export interface Website {
+  id: string;
+  url: string;
+  description?: string;
+  paused: boolean;
+  createdAt: string;
+  userId: string;
+}
+
 interface AddSiteDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAdd: (url: string, description: string) => void;
+  /** 
+   * Called with the full Website record returned 
+   * by POST /api/websites 
+   **/
+  onAdd: (website: Website) => void;
 }
 
 const AddSiteDialog = ({ open, onOpenChange, onAdd }: AddSiteDialogProps) => {
@@ -25,12 +38,14 @@ const AddSiteDialog = ({ open, onOpenChange, onAdd }: AddSiteDialogProps) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
 
-    if (!url) {
+    if (!url.trim()) {
       setError('URL is required');
       return;
     }
 
+    // validate URL
     try {
       new URL(url);
     } catch {
@@ -47,7 +62,7 @@ const AddSiteDialog = ({ open, onOpenChange, onAdd }: AddSiteDialogProps) => {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${localStorage.getItem('token')}`,
         },
-        body: JSON.stringify({ url, description }),
+        body: JSON.stringify({ url: url.trim(), description: description.trim() }),
       });
 
       const data = await res.json();
@@ -55,10 +70,12 @@ const AddSiteDialog = ({ open, onOpenChange, onAdd }: AddSiteDialogProps) => {
       if (!res.ok) {
         setError(data.message || 'Failed to add website');
       } else {
-        onAdd(url, description);
+        // call onAdd with the created Website record
+        onAdd(data.website as Website);
+
+        // reset form
         setUrl('');
         setDescription('');
-        setError('');
         onOpenChange(false);
       }
     } catch {
@@ -74,7 +91,7 @@ const AddSiteDialog = ({ open, onOpenChange, onAdd }: AddSiteDialogProps) => {
         <DialogHeader>
           <DialogTitle>Add a New Website</DialogTitle>
           <DialogDescription>
-            Enter the URL and a short description for the website you want to monitor
+            Enter the URL and a short description for the website you want to monitor.
           </DialogDescription>
         </DialogHeader>
 
@@ -107,7 +124,14 @@ const AddSiteDialog = ({ open, onOpenChange, onAdd }: AddSiteDialogProps) => {
           </div>
 
           <DialogFooter className="mt-4">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setError('');
+                onOpenChange(false);
+              }}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={isValidating}>

@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+// src/components/validators/recent-pings.tsx
+import { useState, useEffect, useRef } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -12,6 +13,10 @@ interface LogEntry {
   timestamp: string;
 }
 
+interface RecentPingsProps {
+  isStarted: boolean;
+}
+
 const formatTime = (timestamp: string) => {
   const then = new Date(timestamp).getTime();
   const seconds = Math.floor((Date.now() - then) / 1000);
@@ -20,13 +25,15 @@ const formatTime = (timestamp: string) => {
   return `${Math.floor(seconds / 3600)}h ago`;
 };
 
-const RecentPings = () => {
+const RecentPings: React.FC<RecentPingsProps> = ({ isStarted }) => {
   const [pings, setPings] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const load = async () => {
     try {
       const res = await fetch('/api/logs');
+      if (!res.ok) return;
       const json = await res.json();
       if (json.success && Array.isArray(json.logs)) {
         setPings(json.logs.slice(0, 15));
@@ -37,11 +44,25 @@ const RecentPings = () => {
     }
   };
 
+  // 1) initial load on mount
   useEffect(() => {
     load();
-    const id = setInterval(load, 10_000);
-    return () => clearInterval(id);
   }, []);
+
+  // 2) start/stop polling when isStarted changes
+  useEffect(() => {
+    if (isStarted) {
+      intervalRef.current = setInterval(load, 10_000);
+    } else if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [isStarted]);
 
   return (
     <ScrollArea className="h-[240px]">
@@ -84,9 +105,7 @@ const RecentPings = () => {
                 </div>
               </div>
               <Badge
-                variant={
-                  ping.status === 'UP' ? 'default' : 'destructive'
-                }
+                variant={ping.status === 'UP' ? 'default' : 'destructive'}
               >
                 {ping.status === 'UP' ? 'OK' : 'Error'}
               </Badge>
