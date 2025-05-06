@@ -107,7 +107,7 @@ const DocsPage = () => {
             <div className="prose dark:prose-invert max-w-none">
               <h1>Documentation</h1>
               <p className="lead">
-                Welcome to the DePin documentation. Here you'll find everything you need to know about running a validator node or monitoring your websites.
+                Welcome to the DeepFry documentation. Here you'll find everything you need to know about running a validator node or monitoring your websites.
               </p>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 not-prose mb-12">
@@ -120,7 +120,7 @@ const DocsPage = () => {
                   </CardHeader>
                   <CardContent>
                     <p className="text-muted-foreground mb-4">
-                      Get up and running with DePin in minutes
+                      Get up and running with DeepFry in minutes
                     </p>
                     <Button variant="outline" className="w-full">View Guide</Button>
                   </CardContent>
@@ -144,7 +144,7 @@ const DocsPage = () => {
 
               <h2 id="introduction">Introduction</h2>
               <p>
-                DePin is a decentralized website monitoring platform that leverages a network of validator nodes to provide reliable and transparent uptime monitoring.
+                DeepFry is a decentralized website monitoring platform that leverages a network of validator nodes to provide reliable and transparent uptime monitoring.
               </p>
 
               <h3>Key Features</h3>
@@ -158,13 +158,13 @@ const DocsPage = () => {
 
               <h2 id="quick-start">Quick Start Guide</h2>
               <p>
-                Follow these steps to get started with DePin:
+                Follow these steps to get started with DeepFry:
               </p>
 
               <ol>
                 <li>
                   <strong>Create an Account</strong>
-                  <p>Sign up for a DePin account using our simple registration process.</p>
+                  <p>Sign up for a DeepFry account using our simple registration process.</p>
                 </li>
                 <li>
                   <strong>Choose Your Role</strong>

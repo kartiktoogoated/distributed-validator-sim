@@ -26,7 +26,7 @@ const Header = () => {
       <div className="container mx-auto flex h-16 items-center justify-between px-4 md:px-6">
         <Link to="/" className="flex items-center gap-2">
           <Activity className="h-6 w-6 text-primary" />
-          <span className="text-xl font-bold">DePin</span>
+          <span className="text-xl font-bold">DeepFry</span>
         </Link>
 
         {/* Desktop Navigation */}
@@ -39,6 +39,9 @@ const Header = () => {
           </Link>
           <Link to="/docs" className="text-muted-foreground hover:text-foreground transition-colors">
             Docs
+          </Link>
+          <Link to="/crypto" className="text-muted-foreground hover:text-foreground transition-colors">
+            Web3
           </Link>
         </nav>
 
@@ -96,6 +99,13 @@ const Header = () => {
               onClick={() => setIsMobileMenuOpen(false)}
             >
               Docs
+            </Link>
+            <Link 
+              to="/crypto" 
+              className="py-2 text-muted-foreground hover:text-foreground transition-colors"
+              onClick={() => setIsMobileMenuOpen(false)}
+            >
+              Web3
             </Link>
             <div className="pt-2 flex flex-col gap-2">
               <Button variant="outline" asChild className="w-full">

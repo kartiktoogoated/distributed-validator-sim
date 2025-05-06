@@ -17,24 +17,39 @@ const Footer = () => {
           <div className="md:col-span-1">
             <Link to="/" className="flex items-center gap-2">
               <Activity className="h-6 w-6 text-primary" />
-              <span className="text-xl font-bold">DePin</span>
+              <span className="text-xl font-bold">DeepFry</span>
             </Link>
             <p className="mt-4 text-muted-foreground">
               A decentralized website monitoring platform powered by distributed validators.
             </p>
             <div className="flex gap-4 mt-6">
               <Button variant="ghost" size="icon" asChild>
-                <a href="#" onClick={comingSoon} aria-label="Twitter">
+                <a
+                  href="https://twitter.com/kartikkkxdd"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Twitter"
+                >
                   <Twitter className="h-5 w-5" />
                 </a>
               </Button>
               <Button variant="ghost" size="icon" asChild>
-                <a href="#" onClick={comingSoon} aria-label="Github">
+                <a
+                  href="https://github.com/kartiktoogoated"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="GitHub"
+                >
                   <Github className="h-5 w-5" />
                 </a>
               </Button>
               <Button variant="ghost" size="icon" asChild>
-                <a href="#" onClick={comingSoon} aria-label="LinkedIn">
+                <a
+                  href="https://www.linkedin.com/in/kartik-tomar-0621a6219/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="LinkedIn"
+                >
                   <Linkedin className="h-5 w-5" />
                 </a>
               </Button>
@@ -99,9 +114,9 @@ const Footer = () => {
               Stay updated with our latest developments.
             </p>
             <form onSubmit={handleSubmit} className="space-y-2">
-              <Input 
-                type="email" 
-                placeholder="Enter your email" 
+              <Input
+                type="email"
+                placeholder="Enter your email"
                 className="bg-background"
                 required
               />
@@ -114,7 +129,7 @@ const Footer = () => {
 
         <div className="border-t mt-12 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
           <p className="text-sm text-muted-foreground">
-            © {new Date().getFullYear()} DePin. All rights reserved.
+            © {new Date().getFullYear()} DeepFry. All rights reserved.
           </p>
           <div className="flex gap-6 text-sm">
             <Link to="/terms" className="text-muted-foreground hover:text-foreground transition-colors">
