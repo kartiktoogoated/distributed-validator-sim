@@ -2,17 +2,22 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
 
-// Fallback for environments where the env might be missing
-const API_BASE_URL = process.env.VITE_API_BASE_URL || "https://api.deepfry.tech";
+const API_BASE_URL =
+  process.env.VITE_API_BASE_URL || "https://api.deepfry.tech";
 
 export default defineConfig({
-  envDir: path.resolve(__dirname, "../../packages/ui"),
-
+  // if you really want your .env files in the ui package,
+  // but usually you'd point envDir at the root of this app:
+  // envDir: path.resolve(__dirname, "../../packages/ui"),
+  
   plugins: [react()],
 
   resolve: {
     alias: {
+      // your existing workspace-ui alias
       "@repo/ui": path.resolve(__dirname, "../../packages/ui/src"),
+      // add this so "@/foo" → apps/web/src/foo
+      "@": path.resolve(__dirname, "./src"),
     },
   },
 
@@ -20,9 +25,7 @@ export default defineConfig({
     host: "0.0.0.0",
     port: 5173,
     strictPort: true,
-    hmr: {
-      clientPort: 443,
-    },
+    hmr: { clientPort: 443 },
     cors: true,
 
     proxy: {
@@ -30,7 +33,7 @@ export default defineConfig({
         target: API_BASE_URL,
         changeOrigin: true,
         secure: false,
-        rewrite: (path) => path.replace(/^\/api/, ""),
+        rewrite: (p) => p.replace(/^\/api/, ""),
       },
     },
   },
