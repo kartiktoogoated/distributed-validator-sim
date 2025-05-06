@@ -3,13 +3,13 @@ import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider } from '@/context/auth-context';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import LandingPage from '@/pages/landing';
-import ClientDashboard from '@/pages/client-dashboard';
-import ValidatorDashboard from '@/pages/validator-dashboard';
-import LoginPage from '@/pages/login';
-import SignupPage from '@/pages/signup'; 
 import AboutPage from '@/pages/about';
 import DocsPage from '@/pages/docs';
-import PricingPage from './pages/pricing';
+import CryptoPage from '@/pages/crypto';
+import ClientDashboard from '@/pages/client-dashboard';
+import LoginPage from '@/pages/login';
+import SignupPage from '@/pages/signup';
+import ProtectedRoute from '@/components/protected-route';
 
 function App() {
   return (
@@ -20,20 +20,16 @@ function App() {
             <Route path="/" element={<LandingPage />} />
             <Route path="/about" element={<AboutPage />} />
             <Route path="/docs" element={<DocsPage />} />
-            <Route path="/pricing" element={<PricingPage />} />
+            <Route path="/crypto" element={<CryptoPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signup" element={<SignupPage />} />
-
-            {/* directly render ValidatorDashboard (with its own nested <Routes>) */}
-            <Route
-              path="/validator-dashboard/*"
-              element={<ValidatorDashboard />}
-            />
-
-            {/* client side is still protected */}
-            <Route
-              path="/client-dashboard/*"
-              element={<ClientDashboard />}
+            <Route 
+              path="/client-dashboard/*" 
+              element={
+                <ProtectedRoute userType="client">
+                  <ClientDashboard />
+                </ProtectedRoute>
+              } 
             />
           </Routes>
           <Toaster />
