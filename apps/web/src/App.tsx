@@ -10,6 +10,7 @@ import ClientDashboard from '@/pages/client-dashboard';
 import LoginPage from '@/pages/login';
 import SignupPage from '@/pages/signup';
 import ProtectedRoute from '@/components/protected-route';
+import PricingPage from './pages/pricing';
 
 function App() {
   return (
@@ -23,6 +24,7 @@ function App() {
             <Route path="/crypto" element={<CryptoPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signup" element={<SignupPage />} />
+            <Route path="/pricing" element={<PricingPage />} />
             <Route 
               path="/client-dashboard/*" 
               element={
