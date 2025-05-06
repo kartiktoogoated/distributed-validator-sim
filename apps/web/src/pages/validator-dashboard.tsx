@@ -28,9 +28,21 @@ interface DashboardData {
   performanceScore: number
 }
 
+interface LogEntry {
+  id: number
+  validatorId: number
+  region: string
+  site: string
+  status: 'UP' | 'DOWN'
+  latency: number | null
+  timestamp: string
+}
+
+const POLL_INTERVAL_MS = 60_000
+
 const ValidatorDashboard: React.FC = () => {
   const [isStarted, setIsStarted] = useState(
-    localStorage.getItem('validatorStarted') === 'true'
+    () => localStorage.getItem('validatorStarted') === 'true'
   )
   const { toast } = useToast()
 
@@ -44,20 +56,80 @@ const ValidatorDashboard: React.FC = () => {
   const totalMessages = useRef(0)
   const totalUpPercent = useRef(0)
 
+  //
+  // 1) Seed initial round from GET /api/simulate
+  //
   useEffect(() => {
-    // if previously started, restart on backend
-    if (isStarted) {
-      fetch('/api/simulate/start', { method: 'POST' }).catch((err) => {
-        console.error('Failed to start simulation loop', err)
-        toast({
-          title: 'Error',
-          description: 'Could not start validator',
-          variant: 'destructive',
+    if (!isStarted) return
+    fetch('/api/simulate')
+      .then((r) => r.json())
+      .then(({ payloads }: any) => {
+        if (!Array.isArray(payloads)) return
+        const count = payloads.length
+        const upCount = payloads.filter((p: any) => p.consensus === 'UP').length
+        const uptime = count ? Math.round((upCount / count) * 100) : 0
+        const last = payloads[payloads.length - 1]
+        const lastPing = last?.timeStamp || ''
+        const perf =
+          last && Array.isArray(last.votes)
+            ? Math.round(
+                (last.votes.filter((v: any) => v.status === 'UP').length /
+                  last.votes.length) *
+                  100
+              )
+            : 0
+
+        // reset WS counters
+        totalMessages.current = 0
+        totalUpPercent.current = 0
+
+        setDashboardData({
+          pingCount: count,
+          uptime,
+          lastPing,
+          performanceScore: perf,
         })
       })
+      .catch((err) => console.error('Initial simulate fetch failed', err))
+  }, [isStarted])
+
+  //
+  // 2) Poll `/api/logs` every minute to update pingCount, uptime, lastPing
+  //
+  useEffect(() => {
+    const fetchLogs = async () => {
+      try {
+        const res = await fetch('/api/logs')
+        const { logs }: { logs: LogEntry[] } = await res.json()
+        const sorted = logs.sort(
+          (a, b) =>
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        )
+        const count = sorted.length
+        const upCount = sorted.filter((l) => l.status === 'UP').length
+        const uptime = count ? Math.round((upCount / count) * 100) : 0
+        const lastPing = sorted[0]?.timestamp || ''
+
+        setDashboardData((prev) => ({
+          ...prev,
+          pingCount: count,
+          uptime,
+          lastPing,
+        }))
+      } catch (err: any) {
+        console.error('Failed to fetch logs', err)
+      }
     }
 
-    // connect WS via Vite proxy to /api/ws
+    fetchLogs()
+    const id = setInterval(fetchLogs, POLL_INTERVAL_MS)
+    return () => clearInterval(id)
+  }, [])
+
+  //
+  // 3) Open WebSocket once for live performance updates
+  //
+  useEffect(() => {
     const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
     const ws = new WebSocket(`${proto}://${window.location.host}/api/ws`)
 
@@ -65,11 +137,9 @@ const ValidatorDashboard: React.FC = () => {
     ws.onerror = (err) => console.error('WebSocket error', err)
 
     ws.onmessage = (event) => {
-      const { votes, timeStamp } = JSON.parse(event.data) as {
+      const { votes } = JSON.parse(event.data) as {
         votes: { status: 'UP' | 'DOWN'; weight: number }[]
-        timeStamp: string
       }
-
       const upCount = votes.filter((v) => v.status === 'UP').length
       const upPercent = Math.round((upCount / votes.length) * 100)
 
@@ -77,8 +147,7 @@ const ValidatorDashboard: React.FC = () => {
       totalUpPercent.current += upPercent
 
       setDashboardData((prev) => ({
-        pingCount: prev.pingCount + 1,
-        lastPing: timeStamp,
+        ...prev,
         performanceScore: upPercent,
         uptime:
           Math.round((totalUpPercent.current / totalMessages.current) * 10) /
@@ -86,40 +155,30 @@ const ValidatorDashboard: React.FC = () => {
       }))
     }
 
-    return () => {
-      ws.close()
-    }
-  }, [isStarted, toast])
+    return () => ws.close()
+  }, [])
 
-  const toggleValidator = async () => {
-    const next = !isStarted
-    setIsStarted(next)
-    localStorage.setItem('validatorStarted', next.toString())
-
-    try {
-      const res = await fetch(`/api/simulate/${next ? 'start' : 'stop'}`, {
-        method: 'POST',
-      })
-      if (!res.ok) {
-        throw new Error(`Failed to ${next ? 'start' : 'stop'} validator`)
-      }
-      toast({
-        title: next ? 'Validator Started' : 'Validator Stopped',
-        description: next
-          ? 'Your validator is now active and pinging websites.'
-          : 'Your validator has been stopped.',
-      })
-    } catch (err: any) {
-      console.error(err)
+  //
+  // 4) Start / Stop single-validator on toggle
+  //
+  useEffect(() => {
+    const path = isStarted ? '/api/simulate/start' : '/api/simulate/stop'
+    fetch(path, { method: 'POST' }).catch((err) => {
+      console.error(`Failed to ${isStarted ? 'start' : 'stop'} validator`, err)
       toast({
         title: 'Error',
         description: err.message,
         variant: 'destructive',
       })
       // rollback
-      setIsStarted(!next)
-      localStorage.setItem('validatorStarted', (!next).toString())
-    }
+      setIsStarted((prev) => !prev)
+      localStorage.setItem('validatorStarted', String(!isStarted))
+    })
+    localStorage.setItem('validatorStarted', String(isStarted))
+  }, [isStarted, toast])
+
+  const toggleValidator = () => {
+    setIsStarted((prev) => !prev)
   }
 
   return (
@@ -205,14 +264,15 @@ const ValidatorDashboard: React.FC = () => {
                   </div>
                   <CardHeader className="flex justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Earnings</CardTitle>
-                    <svg
-                      className="h-4 w-4 text-muted-foreground" fill="none" viewBox="0 0 24 24">
-                      {/* …icon paths… */}
-                    </svg>
+                    <Activity className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold opacity-75">—</div>
-                    <Button variant="ghost" className="text-xs text-muted-foreground p-0 h-auto" onClick={comingSoon}>
+                    <Button
+                      variant="ghost"
+                      className="text-xs text-muted-foreground p-0 h-auto"
+                      onClick={comingSoon}
+                    >
                       Token rewards launching soon
                     </Button>
                   </CardContent>
@@ -254,7 +314,6 @@ const ValidatorDashboard: React.FC = () => {
                         </CardDescription>
                       </CardHeader>
                       <CardContent className="pl-2">
-                        {/* pass isStarted here */}
                         <PingChart isStarted={isStarted} />
                       </CardContent>
                     </Card>
@@ -267,7 +326,6 @@ const ValidatorDashboard: React.FC = () => {
                         </CardDescription>
                       </CardHeader>
                       <CardContent>
-                        {/* pass isStarted here */}
                         <RecentPings isStarted={isStarted} />
                       </CardContent>
                     </Card>

@@ -9,8 +9,8 @@ import CryptoPage from '@/pages/crypto';
 import ClientDashboard from '@/pages/client-dashboard';
 import LoginPage from '@/pages/login';
 import SignupPage from '@/pages/signup';
-import ProtectedRoute from '@/components/protected-route';
 import PricingPage from './pages/pricing';
+import ValidatorDashboard from './pages/validator-dashboard';
 
 function App() {
   return (
@@ -25,12 +25,11 @@ function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/signup" element={<SignupPage />} />
             <Route path="/pricing" element={<PricingPage />} />
+            <Route path="/validator-dashboard/*" element={<ValidatorDashboard />} />
             <Route 
               path="/client-dashboard/*" 
               element={
-                <ProtectedRoute userType="client">
-                  <ClientDashboard />
-                </ProtectedRoute>
+                <ClientDashboard />
               } 
             />
           </Routes>
