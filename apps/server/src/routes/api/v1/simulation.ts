@@ -1,13 +1,12 @@
 import dotenv from "dotenv";
 dotenv.config();
 
-import express, { Router, Request, Response, NextFunction } from "express";
+import express, { Router, Request, Response } from "express";
 import { WebSocketServer } from "ws";
 import { info, warn, error as logError } from "../../../../utils/logger";
 import prisma from "../../../prismaClient";
 import { Validator, Status, GossipPayload } from "../../../core/Validator";
 import { GossipManager } from "../../../core/GossipManager";
-import { Hub } from "../../../core/Hub";
 import { RaftNode } from "../../../core/raft";
 
 const GOSSIP_ROUNDS = 1;
@@ -82,7 +81,7 @@ export default function createSimulationRouter(
   // 1) Ingest gossip (unchanged)
   SimulationRouter.post(
     "/gossip",
-    async (req: Request<{}, any, GossipPayload>, res, next) => {
+    async (req: Request<{}, any, GossipPayload>, res) => {
       /* … your existing gossip handler … */
     }
   );
@@ -118,7 +117,7 @@ export default function createSimulationRouter(
   return SimulationRouter;
 }
 
-// 5) perform ping→gossip→consensus for *one* URL
+// 5) perform ping→gossip→(Raft & WebSocket) for *one* URL
 async function executeRoundForUrl(
   wsServer: WebSocketServer,
   url: string
@@ -180,29 +179,15 @@ async function executeRoundForUrl(
     logError(`GossipManager error for ${url}: ${err.stack || err}`);
   }
 
-  // — e) compute consensus
-  let consensusStatus: Status = vote.status;
-  try {
-    const total = peerAddresses.length + 1;
-    const quorum = Math.ceil(total / 2);
-    const result = new Hub([validatorInstance], quorum).checkConsensus(
-      url
-    ) as Status;
-    if (result) consensusStatus = result;
-    info(`[Consensus] ${url} → ${consensusStatus}`);
-  } catch (err: any) {
-    logError(`Consensus error for ${url}: ${err.stack || err}`);
-  }
-
-  // — f) build payload
+  // — e) build payload
   const payload = {
     url,
-    consensus: consensusStatus,
+    consensus: vote.status,
     votes: [{ validatorId: localValidatorId, status: vote.status, weight: vote.weight }],
     timeStamp,
   };
 
-  // — g) propose via Raft
+  // — f) propose via Raft
   try {
     raftNode.propose(payload);
     info(`Raft propose successful for ${url}`);
@@ -210,7 +195,7 @@ async function executeRoundForUrl(
     info("Not Raft leader—skipping propose");
   }
 
-  // — h) broadcast over WebSocket
+  // — g) broadcast over WebSocket
   try {
     const msg = JSON.stringify(payload);
     wsServer.clients.forEach((c) => {
