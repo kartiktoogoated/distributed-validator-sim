@@ -16,48 +16,59 @@ import createStatusRouter from "./status";
 import createLogsRouter from "./logs";
 import { startKafkaProducer } from "../../../services/producer";
 import { startAlertService } from "../../../services/alertService";
-import { RaftNode } from "../../../core/raft";
-import { initRaftRouter } from "./raftServer";
 
 const app = express();
-const PORT = Number(process.env.PORT);
+const PORT = Number(process.env.PORT) || 3000;
 
 // ── Security & parsing ─────────────────
 app.use(helmet());
-app.use(cors({
-  origin: 'https://www.deepfry.tech',
-  credentials: true,
-}));
+app.use(
+  cors({
+    origin: "https://www.deepfry.tech",
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 // ── HTTP + WS setup ────────────────────
 const server = http.createServer(app);
-
-// ▶️ Listen for WebSocket upgrades on `/api/ws`
-//    — Vite proxy (ws: true under `/api`) will forward wss://…/api/ws → this
 const wss = new WebSocketServer({ server, path: "/api/ws" });
 
-// ── Raft setup ─────────────────────────
-if (!process.env.VALIDATOR_ID || !process.env.PEERS) {
-  throw new Error("Missing VALIDATOR_ID or PEERS in environment");
+// ── Raft setup (only for aggregators) ─────────────────────────────
+let raftNode;
+const isAggregator = process.env.IS_AGGREGATOR === "true";
+
+if (isAggregator) {
+  (async () => {
+    const { RaftNode } = await import("../../../core/raft");
+    const { initRaftRouter } = await import("./raftServer");
+
+    if (!process.env.VALIDATOR_ID || process.env.PEERS === undefined) {
+      throw new Error("Missing VALIDATOR_ID or PEERS in environment");
+    }
+
+    const nodeId = Number(process.env.VALIDATOR_ID);
+    const peers = (process.env.PEERS || "")
+      .split(",")
+      .map((p) => p.trim().replace(/^https?:\/\//, "").replace(/\/+$/, ""))
+      .filter(Boolean);
+
+    info(`Aggregator ${nodeId} starting with peers: [${peers.join(", ")}]`);
+
+    raftNode = new RaftNode(nodeId, peers, (cmd) => {
+      const message = JSON.stringify({ type: "raft-commit", data: cmd });
+      wss.clients.forEach((c) => {
+        if (c.readyState === c.OPEN) c.send(message);
+      });
+    });
+
+    app.use("/api/raft", initRaftRouter(raftNode));
+  })();
+} else {
+  info("🧿 Validator node: Raft setup skipped.");
 }
 
-const nodeId = Number(process.env.VALIDATOR_ID);
-const peers = process.env.PEERS.split(",").map((p) =>
-  p.trim().replace(/^https?:\/\//, "").replace(/\/+$/, "")
-);
-
-export const raftNode = new RaftNode(nodeId, peers, (cmd) => {
-  const message = JSON.stringify({ type: "raft-commit", data: cmd });
-  wss.clients.forEach((c) =>
-    c.readyState === c.OPEN && c.send(message)
-  );
-});
-
-// ── Raft RPC (no rate-limit) ───────────
-app.use("/api/raft", initRaftRouter(raftNode));
-
-// ── Global rate-limit ───────────────────
+// ── Global rate-limit (skip Raft endpoints) ─────────────────────
 app.use(
   rateLimit({
     windowMs: 15 * 60_000,
@@ -67,25 +78,25 @@ app.use(
   })
 );
 
-// ── Your REST routes ────────────────────
+// ── REST routes ──────────────────────────────────────────────────
 app.use("/api/auth", authRouter);
 app.use("/api", websiteRouter);
 app.use("/api/simulate", createSimulationRouter(wss));
 app.use("/api/status", createStatusRouter(wss));
 app.use("/api/logs", createLogsRouter());
 
-// ── Kafka producer ──────────────────────
+// ── Kafka producer ───────────────────────────────────────────────
 startKafkaProducer().catch((err) => {
   logError(`Kafka init failed: ${err}`);
 });
 
-// ── Alert service ───────────────────────
+// ── Alert service ────────────────────────────────────────────────
 startAlertService(wss).catch((err) => {
   logError(`Failed to start AlertService: ${err.stack || err}`);
   process.exit(1);
 });
 
-// ── WS logging ──────────────────────────
+// ── WebSocket logging ────────────────────────────────────────────
 wss.on("connection", (client) => {
   info("WebSocket client connected");
   client.on("message", (m) => {
@@ -95,7 +106,8 @@ wss.on("connection", (client) => {
   client.on("error", (e) => logError(`WS error: ${e.message}`));
 });
 
-// ── Start server ────────────────────────
+// ── Start HTTP server ────────────────────────────────────────────
 server.listen(PORT, "0.0.0.0", () => {
-  info(`Validator ${nodeId} listening on port ${PORT}`);
+  const role = isAggregator ? "Aggregator" : "Validator";
+  info(`${role} ${process.env.VALIDATOR_ID || ""} listening on port ${PORT}`);
 });
