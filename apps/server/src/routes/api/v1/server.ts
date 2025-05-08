@@ -4,7 +4,6 @@ dotenv.config();
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
-import rateLimit from "express-rate-limit";
 import http from "http";
 import { WebSocketServer } from "ws";
 
@@ -16,6 +15,7 @@ import createStatusRouter from "./status";
 import createLogsRouter from "./logs";
 import { startKafkaProducer } from "../../../services/producer";
 import { startAlertService } from "../../../services/alertService";
+import { globalRateLimiter } from "../../../middlewares/rateLimiter";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -68,15 +68,8 @@ if (isAggregator) {
   info("🧿 Validator node: Raft setup skipped.");
 }
 
-// ── Global rate-limit (skip Raft endpoints) ─────────────────────
-app.use(
-  rateLimit({
-    windowMs: 15 * 60_000,
-    max: 100,
-    skip: (req) => req.path.startsWith("/api/raft"),
-    message: "Too many requests, please try again later",
-  })
-);
+// ── Global rate-limit ─────────────────────
+app.use(globalRateLimiter);
 
 // ── REST routes ──────────────────────────────────────────────────
 app.use("/api/auth", authRouter);

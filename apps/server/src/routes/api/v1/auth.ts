@@ -1,24 +1,15 @@
-import  { Router } from 'express';
+import { Router } from 'express';
 import { signup, verifyPendingSignup, signin } from '../../../controllers/authController';
-import rateLimit from 'express-rate-limit';
-
-const authLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 5, // limit each IP to 5 requests 
-    message: "Too many auth requests, please try again later",
-  });
+import { authRateLimiter } from '../../../middlewares/rateLimiter';
 
 const authRouter = Router();
 
-authRouter.use(authLimiter);
+// Apply rate limiter to all auth routes
+authRouter.use(authRateLimiter);
 
-// Route for user signup
+// Auth routes
 authRouter.post('/signup', signup);
-
-// Route for OTP verification.
 authRouter.post('/verify-otp', verifyPendingSignup);
-
-// Route for user sign-in
 authRouter.post('/signin', signin);
 
 export default authRouter;
