@@ -1,7 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
-import { ChevronRight, Globe, Shield, Zap, Server, Activity, Network, GitMerge, Share2, Coins, Wallet, Lock, Blocks as Blockchain } from 'lucide-react';
+import { ChevronRight, Globe, Shield, Zap, Server, Activity, Network, GitMerge, Share2, Coins, Wallet, Lock, Blocks as Blockchain, Plus, Minus } from 'lucide-react';
 import Header from '@/components/layout/header';
 import Footer from '@/components/layout/footer';
 import HeroAnimation from '@/components/animations/hero-animation';
@@ -10,9 +10,34 @@ import Stats from '@/components/landing/stats';
 import CryptoCard from '@/components/web3/crypto-card';
 
 const LandingPage = () => {
+  const [openFaq, setOpenFaq] = useState<number | null>(null);
+  
   useEffect(() => {
-    document.title = 'DeepFry - Distributed Validator Network';
+    document.title = 'DePin - Distributed Validator Network';
   }, []);
+
+  const faqs = [
+    {
+      question: "What is a distributed validator network?",
+      answer: "A distributed validator network is a decentralized system where multiple nodes work together to monitor website uptime and performance. Our network uses consensus mechanisms to ensure reliable and accurate monitoring results."
+    },
+    {
+      question: "How do I become a validator?",
+      answer: "To become a validator, you'll need to meet our minimum system requirements and stake tokens. The process involves setting up a validator node, completing verification, and joining our consensus network. Full details will be available when our validator program launches."
+    },
+    {
+      question: "What are the rewards for validators?",
+      answer: "Validators earn rewards in DEPIN tokens based on their performance, uptime, and participation in consensus. The exact reward structure will be announced with our tokenomics release."
+    },
+    {
+      question: "How does website monitoring work?",
+      answer: "Our network uses distributed validators to monitor websites from multiple geographic locations. Validators check uptime, response time, and other metrics, reaching consensus to provide accurate, tamper-proof monitoring data."
+    },
+    {
+      question: "What makes DePin different from traditional monitoring?",
+      answer: "Unlike centralized monitoring services, DePin uses a decentralized network of validators to provide trustless, consensus-based monitoring. This ensures higher reliability, transparency, and resistance to single points of failure."
+    }
+  ];
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -282,6 +307,55 @@ const LandingPage = () => {
             </ul>
             <Button size="lg" asChild>
               <Link to="/login?type=client">Monitor Your Website</Link>
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      {/* FAQ Section */}
+      <section className="py-20 px-4 md:px-6 lg:px-8 bg-muted/30">
+        <div className="container max-w-4xl mx-auto">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">Frequently Asked Questions</h2>
+            <p className="text-lg text-muted-foreground">
+              Everything you need to know about our distributed validator network
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            {faqs.map((faq, index) => (
+              <div
+                key={index}
+                className="border rounded-lg bg-card transition-all duration-200 hover:shadow-md"
+              >
+                <button
+                  className="w-full px-6 py-4 flex items-center justify-between text-left"
+                  onClick={() => setOpenFaq(openFaq === index ? null : index)}
+                >
+                  <span className="font-medium">{faq.question}</span>
+                  {openFaq === index ? (
+                    <Minus className="h-4 w-4 text-primary shrink-0" />
+                  ) : (
+                    <Plus className="h-4 w-4 text-primary shrink-0" />
+                  )}
+                </button>
+                <div
+                  className={`px-6 overflow-hidden transition-all duration-200 ease-in-out ${
+                    openFaq === index ? 'max-h-48 pb-4' : 'max-h-0'
+                  }`}
+                >
+                  <p className="text-muted-foreground">{faq.answer}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-12 text-center">
+            <p className="text-muted-foreground mb-6">
+              Still have questions? We're here to help.
+            </p>
+            <Button size="lg" variant="outline" asChild>
+              <Link to="/contact">Contact Support</Link>
             </Button>
           </div>
         </div>
