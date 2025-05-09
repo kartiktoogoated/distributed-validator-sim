@@ -9,7 +9,7 @@ import NetworkAnimation from '@/components/animations/network-animation';
 import CryptoCard from '@/components/web3/crypto-card';
 
 const CryptoPage = () => {
-  const [animatedValue, setAnimatedValue] = useState(0);
+  const [, setAnimatedValue] = useState(0);
   const targetValue = 1000000;
 
   useEffect(() => {
@@ -62,30 +62,28 @@ const CryptoPage = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-12">
               <Card className="bg-card/50 backdrop-blur-sm">
                 <CardContent className="p-6 text-center">
-                  <div className="text-3xl font-bold mb-2">
-                    ${animatedValue.toLocaleString()}
-                  </div>
+                  <div className="text-3xl font-bold mb-2">Coming Soon</div>
                   <p className="text-muted-foreground">Total Value Locked</p>
                 </CardContent>
               </Card>
               
               <Card className="bg-card/50 backdrop-blur-sm">
                 <CardContent className="p-6 text-center">
-                  <div className="text-3xl font-bold mb-2">24.5K</div>
+                  <div className="text-3xl font-bold mb-2">Coming Soon</div>
                   <p className="text-muted-foreground">Active Validators</p>
                 </CardContent>
               </Card>
               
               <Card className="bg-card/50 backdrop-blur-sm">
                 <CardContent className="p-6 text-center">
-                  <div className="text-3xl font-bold mb-2">12.8M</div>
+                  <div className="text-3xl font-bold mb-2">Coming Soon</div>
                   <p className="text-muted-foreground">DEPIN Tokens</p>
                 </CardContent>
               </Card>
               
               <Card className="bg-card/50 backdrop-blur-sm">
                 <CardContent className="p-6 text-center">
-                  <div className="text-3xl font-bold mb-2">99.9%</div>
+                  <div className="text-3xl font-bold mb-2">Coming Soon</div>
                   <p className="text-muted-foreground">Network Uptime</p>
                 </CardContent>
               </Card>
@@ -202,4 +200,4 @@ const CryptoPage = () => {
   );
 };
 
-export default CryptoPage;
+export default CryptoPage
