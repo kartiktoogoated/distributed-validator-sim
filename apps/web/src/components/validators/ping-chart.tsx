@@ -104,8 +104,8 @@ const PingChart: React.FC<PingChartProps> = ({ isStarted }) => {
           .slice(-60)
           .map((log) => ({
             formattedTime: formatLabel(log.timestamp),
-            pingTime: log.latency,
-            isDown: false,
+            pingTime: log.latency === 0 ? null : log.latency,
+            isDown: log.latency === 0,
           }))
         setData(slice)
         return
@@ -114,7 +114,7 @@ const PingChart: React.FC<PingChartProps> = ({ isStarted }) => {
         const res = await fetch('/api/logs')
         if (res.status === 429) return
         const json = await res.json()
-        if (json.success) {
+        if (json.success && Array.isArray(json.logs)) {
           historyCache = json.logs
           historyCacheTime = now
           const slice = (json.logs as LogEntry[])
@@ -122,8 +122,8 @@ const PingChart: React.FC<PingChartProps> = ({ isStarted }) => {
             .slice(-60)
             .map((log) => ({
               formattedTime: formatLabel(log.timestamp),
-              pingTime: log.latency,
-              isDown: false,
+              pingTime: log.latency === 0 ? null : log.latency,
+              isDown: log.latency === 0,
             }))
           setData(slice)
         }
@@ -139,11 +139,10 @@ const PingChart: React.FC<PingChartProps> = ({ isStarted }) => {
   useEffect(() => {
     if (!isStarted) return
     const id = setInterval(() => {
-      // same loadHistory logic or call the function above
       fetch('/api/logs')
         .then((r) => (r.status === 429 ? null : r.json()))
         .then((json: any) => {
-          if (json?.success) {
+          if (json?.success && Array.isArray(json.logs)) {
             historyCache = json.logs
             historyCacheTime = Date.now()
             const slice = (json.logs as LogEntry[])
@@ -151,8 +150,8 @@ const PingChart: React.FC<PingChartProps> = ({ isStarted }) => {
               .slice(-60)
               .map((log) => ({
                 formattedTime: formatLabel(log.timestamp),
-                pingTime: log.latency,
-                isDown: false,
+                pingTime: log.latency === 0 ? null : log.latency,
+                isDown: log.latency === 0,
               }))
             setData(slice)
           }

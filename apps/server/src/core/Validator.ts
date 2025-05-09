@@ -1,79 +1,89 @@
-import ping from 'ping'
-import * as dns from 'dns'
-import { promisify } from 'util'
-import { info, warn, error as logError } from '../../utils/logger'
+import ping from "ping";
+import * as dns from "dns";
+import { promisify } from "util";
+import { info, warn, error as logError } from "../../utils/logger";
 
-export type Status = 'UP' | 'DOWN'
-export interface Vote { status: Status; weight: number }
+export type Status = "UP" | "DOWN";
+export interface Vote {
+  status: Status;
+  weight: number;
+}
 
 export interface GossipPayload {
-  site: string
-  vote: Vote
-  validatorId: number
-  responseTime: number
-  timeStamp: string
-  location: string
+  site: string;
+  vote: Vote;
+  validatorId: number;
+  responseTime: number;
+  timeStamp: string;
+  location: string;
 }
 
 // ── simple in-process DNS cache ───────────────────────────────────────────────
-const lookup = promisify(dns.lookup)
-const dnsCache = new Map<string, { address: string; family: number }>()
+const lookup = promisify(dns.lookup);
+const dnsCache = new Map<string, { address: string; family: number }>();
 
 async function cachedLookup(hostname: string) {
-  const cached = dnsCache.get(hostname)
+  const cached = dnsCache.get(hostname);
   if (cached) {
-    info(`DNS cache hit: ${hostname} -> ${cached.address}`)
+    info(`DNS cache hit: ${hostname} -> ${cached.address}`);
     return cached;
   }
 
   let result;
   try {
-    result = await lookup(hostname, { family: 0, verbatim: true })
-    dnsCache.set(hostname, result)
-    info(`DNS cache miss: resolved ${hostname} -> ${result.address}`)
+    result = await lookup(hostname, { family: 0, verbatim: true });
+    dnsCache.set(hostname, result);
+    info(`DNS cache miss: resolved ${hostname} -> ${result.address}`);
     return result;
   } catch (err) {
     logError(`DNS lookup failed for ${hostname}: ${(err as Error).message}`);
-    throw err
+    throw err;
   }
 }
 
 export class Validator {
-  public readonly id: number
-  public peers: string[] = []
-  private lastVotes = new Map<string, Vote>()
+  public readonly id: number;
+  public peers: string[] = [];
+  private lastVotes = new Map<string, Vote>();
 
   constructor(id: number) {
-    this.id = id
+    this.id = id;
   }
 
   /**
    * ICMP-ping (no TCP/TLS), with cached DNS.
    */
   public async checkWebsite(siteUrl: string): Promise<Vote> {
-    const { hostname } = new URL(siteUrl)
-    const start = Date.now()
+    const { hostname } = new URL(siteUrl);
+    const start = Date.now();
 
-    let status: Status = 'DOWN'
+    let status: Status = "DOWN";
     try {
-      const { address } = await cachedLookup(hostname)
+      const { address } = await cachedLookup(hostname);
       // ping once with a 3 s timeout
-      const res = await ping.promise.probe(address, { timeout: 3 })
-      status = res.alive ? 'UP' : 'DOWN'
+      const res = await ping.promise.probe(address, { timeout: 3 });
+      status = res.alive ? "UP" : "DOWN";
 
       if (!res.alive) {
-        warn(`Ping responded DOWN for ${siteUrl}`)
+        warn(`Ping responded DOWN for ${siteUrl}`);
       }
-    } catch (err){
+    } catch (err) {
       logError(`checkWebsite error for ${siteUrl}: ${(err as Error).message}`);
-      status = 'DOWN';
+      status = "DOWN";
     }
 
-    const latency = Date.now() - start
-    const vote: Vote = { status, weight: 1 }
-    this.lastVotes.set(siteUrl, vote)
-    info(`📡 Validator ${this.id} pinged ${siteUrl}: ${status} (icmp ${latency} ms)`)
-    return vote
+    let latency = 0;
+    if (status === "UP") {
+      latency = Date.now() - start;
+    }
+
+    const vote: Vote = { status, weight: 1 };
+
+    this.lastVotes.set(siteUrl, vote);
+    info(
+      `📡 Validator ${this.id} pinged ${siteUrl}: ${status} (icmp ${latency} ms)`
+    );
+    return vote;
   }
 
   /**
@@ -85,7 +95,7 @@ export class Validator {
     timeStamp: string,
     location: string
   ): void {
-    const vote = this.lastVotes.get(siteUrl)
+    const vote = this.lastVotes.get(siteUrl);
     if (!vote) {
       warn(`No cached vote for ${siteUrl}, skipping gossip`);
       return;
@@ -98,27 +108,31 @@ export class Validator {
       responseTime,
       timeStamp,
       location,
-    }
+    };
 
-    info(`Gossiping ${siteUrl} (${vote.status}) to ${this.peers.length} peers`)
-    this.peers.forEach(peer => {
+    info(`Gossiping ${siteUrl} (${vote.status}) to ${this.peers.length} peers`);
+    this.peers.forEach((peer) => {
       fetch(`http://${peer}/api/simulate/gossip`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
         // you can polyfill fetch or use node-fetch
       })
-      .then(() => info(`🔗 Validator ${this.id} → ${peer}: ${vote.status}`))
-      .catch(err => info(`❌ Validator ${this.id} → ${peer} failed: ${err.message}`))
-    })
+        .then(() => info(`🔗 Validator ${this.id} → ${peer}: ${vote.status}`))
+        .catch((err) =>
+          info(`❌ Validator ${this.id} → ${peer} failed: ${err.message}`)
+        );
+    });
   }
 
   public receiveGossip(siteUrl: string, vote: Vote, from: number): void {
-    this.lastVotes.set(siteUrl, vote)
-    info(`🔄 Validator ${this.id} got gossip from ${from} for ${siteUrl}: ${vote.status}`)
+    this.lastVotes.set(siteUrl, vote);
+    info(
+      `🔄 Validator ${this.id} got gossip from ${from} for ${siteUrl}: ${vote.status}`
+    );
   }
 
   public getStatus(siteUrl: string): Vote | undefined {
-    return this.lastVotes.get(siteUrl)
+    return this.lastVotes.get(siteUrl);
   }
 }
