@@ -32,7 +32,7 @@ const RecentPings: React.FC<RecentPingsProps> = ({ isStarted }) => {
 
   const load = async () => {
     try {
-      const res = await fetch('/api/logs');
+      const res = await fetch('/api/logs?validatorId=0');
       if (!res.ok) return;
       const json = await res.json();
       if (json.success && Array.isArray(json.logs)) {

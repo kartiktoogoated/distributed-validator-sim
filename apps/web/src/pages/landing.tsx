@@ -13,7 +13,7 @@ const LandingPage = () => {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
   
   useEffect(() => {
-    document.title = 'DePin - Distributed Validator Network';
+    document.title = 'DeepFry - Distributed Validator Network';
   }, []);
 
   const faqs = [
@@ -27,15 +27,15 @@ const LandingPage = () => {
     },
     {
       question: "What are the rewards for validators?",
-      answer: "Validators earn rewards in DEPIN tokens based on their performance, uptime, and participation in consensus. The exact reward structure will be announced with our tokenomics release."
+      answer: "Validators earn rewards in DeepFry tokens based on their performance, uptime, and participation in consensus. The exact reward structure will be announced with our tokenomics release."
     },
     {
       question: "How does website monitoring work?",
       answer: "Our network uses distributed validators to monitor websites from multiple geographic locations. Validators check uptime, response time, and other metrics, reaching consensus to provide accurate, tamper-proof monitoring data."
     },
     {
-      question: "What makes DePin different from traditional monitoring?",
-      answer: "Unlike centralized monitoring services, DePin uses a decentralized network of validators to provide trustless, consensus-based monitoring. This ensures higher reliability, transparency, and resistance to single points of failure."
+      question: "What makes DeepFry different from traditional monitoring?",
+      answer: "Unlike centralized monitoring services, DeepFry uses a decentralized network of validators to provide trustless, consensus-based monitoring. This ensures higher reliability, transparency, and resistance to single points of failure."
     }
   ];
 

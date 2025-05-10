@@ -39,7 +39,7 @@ const LoginPage = () => {
 
       localStorage.setItem('token', data.token);
       toast({ title: 'Success!', description: 'You are now logged in.' });
-      navigate('/validator-dashboard');
+      navigate('/client-dashboard');
     } catch (err: any) {
       toast({
         title: 'Login failed',

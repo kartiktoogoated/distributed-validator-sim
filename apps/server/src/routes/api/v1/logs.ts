@@ -1,4 +1,3 @@
-// apps/server/src/routes/api/v1/logs.ts
 import { Router, Request, Response } from "express";
 import prisma from "../../../prismaClient";
 
@@ -25,7 +24,6 @@ export default function createLogsRouter(): Router {
           region:      log.validator?.location ?? "aggregator",
           site:        log.site,
           status:      log.status,
-          // if you've since added 'latency' to your schema, include it here:
           latency:     (log as any).latency ?? null,
           timestamp:   log.timestamp,
         })),
