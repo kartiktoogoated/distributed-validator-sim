@@ -9,10 +9,13 @@ import { Validator, Status, GossipPayload } from "../../../core/Validator";
 import { GossipManager } from "../../../core/GossipManager";
 import { RaftNode } from "../../../core/raft";
 
+// Prometheus metrics
+import { latencyHistogram, statusCounter } from "../../../metrics";
+
 const GOSSIP_ROUNDS = 1;
 const PING_INTERVAL_MS = Number(process.env.PING_INTERVAL_MS) || 60_000;
 
-// parse peers from env (unchanged)
+// parse peers from env
 const peerAddresses = (process.env.PEERS ?? "")
   .split(",")
   .map((h) =>
@@ -23,14 +26,14 @@ const peerAddresses = (process.env.PEERS ?? "")
   )
   .filter(Boolean);
 
-// local validator ID & region (unchanged)
+// local validator ID & region
 const localValidatorId = Number(process.env.VALIDATOR_ID);
 if (isNaN(localValidatorId)) {
   throw new Error("VALIDATOR_ID must be a number");
 }
 const localLocation = process.env.LOCATION || "unknown";
 
-// single Validator instance + Raft node (unchanged)
+// single Validator instance + Raft node
 const validatorInstance = new Validator(localValidatorId);
 validatorInstance.peers = peerAddresses;
 const raftNode = new RaftNode(localValidatorId, peerAddresses, (committed) => {
@@ -140,6 +143,10 @@ async function executeRoundForUrl(
       `[Ping] Validator ${localValidatorId}@${localLocation}` +
         ` → ${url}: ${vote.status} (${latency}ms)`
     );
+
+    // ** Prometheus instrumentation **
+    latencyHistogram.observe(latency);
+    statusCounter.labels(vote.status).inc();
   } catch (err: any) {
     logError(`Ping error for ${url}: ${err.stack || err}`);
     throw err;

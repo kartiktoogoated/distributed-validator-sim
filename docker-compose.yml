@@ -1,5 +1,28 @@
+version: '3.8'
 
 services:
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+    networks:
+      - raftnet
+
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    ports:
+      - "3003:3000"
+    volumes:
+      - grafana-storage:/var/lib/grafana
+    networks:
+      - raftnet
+
   db:
     image: postgres:15
     container_name: db
@@ -41,7 +64,6 @@ services:
     networks:
       - raftnet
 
-  # ── Aggregator (Node A) ──────────────────────────────────────────────────────
   aggregator:
     build:
       context: .
@@ -60,7 +82,6 @@ services:
       - raftnet
     restart: always
 
-  # ── Validator B (Node B) ─────────────────────────────────────────────────────
   validator_b:
     build:
       context: .
@@ -72,14 +93,13 @@ services:
       - kafka
       - zookeeper
     ports:
-      - "3001:3001"       
+      - "3001:3001"
     env_file:
-      - .env.nodeB       
+      - .env.nodeB
     networks:
       - raftnet
     restart: always
 
-  # ── Validator C (Node C) ─────────────────────────────────────────────────────
   validator_c:
     build:
       context: .
@@ -91,7 +111,7 @@ services:
       - kafka
       - zookeeper
     ports:
-      - "3002:3002"      
+      - "3002:3002"
     env_file:
       - .env.nodeC
     networks:
@@ -100,6 +120,7 @@ services:
 
 volumes:
   postgres_data:
+  grafana-storage:
 
 networks:
   raftnet:
