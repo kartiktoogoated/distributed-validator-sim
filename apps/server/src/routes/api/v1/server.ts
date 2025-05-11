@@ -16,6 +16,7 @@ import createLogsRouter from "./logs";
 import { startKafkaProducer } from "../../../services/producer";
 import { startAlertService } from "../../../services/alertService";
 import { globalRateLimiter } from "../../../middlewares/rateLimiter";
+import { register as promRegister } from "../../../metrics";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -29,6 +30,17 @@ app.use(
   })
 );
 app.use(express.json());
+
+// ── Prometheus metrics endpoint ───────────────────
+app.get("/metrics", async (_req, res) => {
+  try {
+    res.setHeader("Content-Type", promRegister.contentType);
+    res.end(await promRegister.metrics());
+  } catch (err) {
+    logError(`Metrics scrape failed: ${err}`);
+    res.status(500).end();
+  }
+});
 
 // ── HTTP + WS setup ────────────────────
 const server = http.createServer(app);
@@ -50,7 +62,12 @@ if (isAggregator) {
     const nodeId = Number(process.env.VALIDATOR_ID);
     const peers = (process.env.PEERS || "")
       .split(",")
-      .map((p) => p.trim().replace(/^https?:\/\//, "").replace(/\/+$/, ""))
+      .map((p) =>
+        p
+          .trim()
+          .replace(/^https?:\/\//, "")
+          .replace(/\/+$/, "")
+      )
       .filter(Boolean);
 
     info(`Aggregator ${nodeId} starting with peers: [${peers.join(", ")}]`);

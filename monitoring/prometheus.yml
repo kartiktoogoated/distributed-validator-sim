@@ -1,0 +1,10 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'validator_nodes'
+    static_configs:
+      - targets:
+          - 'aggregator:3000'
+          - 'validator_b:3001'
+          - 'validator_c:3002'
