@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// src/pages/login.tsx
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -9,6 +8,8 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Activity } from 'lucide-react';
+import { useWallet } from '@solana/wallet-adapter-react';
+import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');
@@ -17,6 +18,9 @@ const LoginPage = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
 
+  const { publicKey, signMessage, connected } = useWallet();
+
+  // Email/password login
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -26,7 +30,6 @@ const LoginPage = () => {
     }
 
     setIsLoading(true);
-
     try {
       const res = await fetch('/api/auth/signin', {
         method: 'POST',
@@ -48,6 +51,39 @@ const LoginPage = () => {
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Sign & verify Phantom wallet
+  const handlePhantomSign = async () => {
+    try {
+      if (!publicKey || !signMessage) {
+        toast({ title: 'Error', description: 'Wallet not ready', variant: 'destructive' });
+        return;
+      }
+
+      const message = 'deepfry-validator-auth';
+      const encoded = new TextEncoder().encode(message);
+      const signature = await signMessage(encoded);
+
+      const res = await fetch('/api/auth/verify-wallet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          wallet: publicKey.toBase58(),
+          message,
+          signature: Array.from(signature),
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Wallet login failed');
+
+      localStorage.setItem('token', data.token ?? '');
+      toast({ title: 'Success!', description: 'Logged in with Phantom.' });
+      navigate('/client-dashboard');
+    } catch (err: any) {
+      toast({ title: 'Phantom Login failed', description: err.message || String(err), variant: 'destructive' });
     }
   };
 
@@ -73,6 +109,7 @@ const LoginPage = () => {
           <CardTitle className="text-2xl text-center">Welcome Back</CardTitle>
           <CardDescription className="text-center">Sign in to your account</CardDescription>
         </CardHeader>
+
         <CardContent>
           <form onSubmit={handleLogin}>
             <div className="grid gap-4">
@@ -102,7 +139,14 @@ const LoginPage = () => {
             </div>
           </form>
         </CardContent>
-        <CardFooter className="flex flex-col space-y-4">
+
+        <CardFooter className="flex flex-col space-y-2">
+          <WalletMultiButton className="w-full justify-center" />
+          {connected && (
+            <Button variant="default" onClick={handlePhantomSign} className="w-full">
+              Sign & Login with Phantom
+            </Button>
+          )}
           <p className="text-sm text-center">
             Don't have an account?{' '}
             <Button variant="link" className="p-0 h-auto" asChild>

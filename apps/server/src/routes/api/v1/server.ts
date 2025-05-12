@@ -13,6 +13,7 @@ import websiteRouter from "./website";
 import createSimulationRouter from "./simulation";
 import createStatusRouter from "./status";
 import createLogsRouter from "./logs";
+import SolanaRouter from "./verify-wallet";
 import { startKafkaProducer } from "../../../services/producer";
 import { startAlertService } from "../../../services/alertService";
 import { globalRateLimiter } from "../../../middlewares/rateLimiter";
@@ -94,6 +95,7 @@ app.use("/api", websiteRouter);
 app.use("/api/simulate", createSimulationRouter(wss));
 app.use("/api/status", createStatusRouter(wss));
 app.use("/api/logs", createLogsRouter());
+app.use('/api/auth', SolanaRouter);
 
 // ── Kafka producer ───────────────────────────────────────────────
 startKafkaProducer().catch((err) => {

@@ -1,21 +1,12 @@
-import { Router, Request, Response } from 'express';
-import { signup, verifyPendingSignup, signin } from '../../../controllers/authController';
-import { authRateLimiter } from '../../../middlewares/rateLimiter';
+import { Router, Request, Response } from "express";
 import { PublicKey } from '@solana/web3.js';
-import nacl from 'tweetnacl';
-import prisma from '../../../prismaClient';
+import nacl from "tweetnacl";
+import prisma from "../../../prismaClient";
+import { error } from "console";
 
-const authRouter = Router();
+const SolanaRouter = Router();
 
-// Rate limiter for all auth routes
-authRouter.use(authRateLimiter);
-
-// Email/OTP-based auth
-authRouter.post('/signup', signup);
-authRouter.post('/verify-otp', verifyPendingSignup);
-authRouter.post('/signin', signin);
-
-authRouter.post('/verify-wallet', async (req: Request, res: Response): Promise<void> => {
+SolanaRouter.post('/verify-wallet', async (req: Request, res: Response): Promise<void> => {
     try {
         const { wallet, message, signature } = req.body as {
             wallet: string;
@@ -61,4 +52,4 @@ authRouter.post('/verify-wallet', async (req: Request, res: Response): Promise<v
     }
 });
 
-export default authRouter;
+export default SolanaRouter;
