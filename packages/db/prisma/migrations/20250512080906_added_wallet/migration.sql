@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Validator" ALTER COLUMN "lastSeen" DROP NOT NULL,
+ALTER COLUMN "wallet" DROP NOT NULL;
