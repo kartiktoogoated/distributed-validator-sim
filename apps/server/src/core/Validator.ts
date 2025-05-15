@@ -2,6 +2,7 @@ import ping from "ping";
 import * as dns from "dns";
 import { promisify } from "util";
 import { info, warn, error as logError } from "../../utils/logger";
+import { sendToTopic } from "../services/producer";
 
 export type Status = "UP" | "DOWN";
 export interface Vote {
@@ -45,9 +46,11 @@ export class Validator {
   public readonly id: number;
   public peers: string[] = [];
   private lastVotes = new Map<string, Vote>();
+  private location: string;
 
-  constructor(id: number) {
+  constructor(id: number, location: string = process.env.LOCATION || 'unknown') {
     this.id = id;
+    this.location = location;
   }
 
   /**
@@ -78,11 +81,23 @@ export class Validator {
     }
 
     const vote: Vote = { status, weight: 1 };
-
     this.lastVotes.set(siteUrl, vote);
-    info(
-      `📡 Validator ${this.id} pinged ${siteUrl}: ${status} (icmp ${latency} ms)`
-    );
+
+    // Send status to Kafka with location
+    try {
+      await sendToTopic("validator-logs", {
+        validatorId: this.id,
+        url: siteUrl,
+        status,
+        latencyMs: latency,
+        timestamp: new Date().toISOString(),
+        location: this.location
+      });
+      info(`📡 Validator ${this.id}@${this.location} pinged ${siteUrl}: ${status} (icmp ${latency} ms) and sent to Kafka`);
+    } catch (err) {
+      logError(`Failed to send to Kafka: ${(err as Error).message}`);
+    }
+
     return vote;
   }
 
