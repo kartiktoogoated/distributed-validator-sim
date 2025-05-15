@@ -6,6 +6,8 @@ import cors from "cors";
 import helmet from "helmet";
 import http from "http";
 import { WebSocketServer } from "ws";
+import passport from "passport";
+import session from "express-session";
 
 import { info, error as logError } from "../../../../utils/logger";
 import authRouter from "./auth";
@@ -31,6 +33,17 @@ app.use(
   })
 );
 app.use(express.json());
+
+// ── Session & Passport setup ─────────────────
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || "your-secret-key",
+    resave: false,
+    saveUninitialized: false,
+  })
+);
+app.use(passport.initialize());
+app.use(passport.session());
 
 // ── Prometheus metrics endpoint ───────────────────
 app.get("/metrics", async (_req, res) => {
