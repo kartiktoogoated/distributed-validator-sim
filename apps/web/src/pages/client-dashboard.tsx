@@ -232,6 +232,7 @@ const ClientDashboard: React.FC = () => {
                       sites={filteredSites}
                       onSelect={setSelectedSiteId}
                       selectedSite={selectedSiteId}
+                      onDelete={loadSites}
                     />
                   </CardContent>
                   <CardFooter className="border-t p-4">

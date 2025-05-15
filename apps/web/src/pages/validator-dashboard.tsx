@@ -96,31 +96,31 @@ const ValidatorDashboard: React.FC = () => {
   //
   // 2) Poll `/api/logs` every minute to update pingCount, uptime, lastPing
   //
-  useEffect(() => {
-    const fetchLogs = async () => {
-      try {
-        const res = await fetch('/api/logs')
-        const { logs }: { logs: LogEntry[] } = await res.json()
-        const sorted = logs.sort(
-          (a, b) =>
-            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-        )
-        const count = sorted.length
-        const upCount = sorted.filter((l) => l.status === 'UP').length
-        const uptime = count ? Math.round((upCount / count) * 100) : 0
-        const lastPing = sorted[0]?.timestamp || ''
+  const fetchLogs = async () => {
+    try {
+      const res = await fetch('/api/logs')
+      const { logs }: { logs: LogEntry[] } = await res.json()
+      const sorted = logs.sort(
+        (a, b) =>
+          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+      )
+      const count = sorted.length
+      const upCount = sorted.filter((l) => l.status === 'UP').length
+      const uptime = count ? Math.round((upCount / count) * 100) : 0
+      const lastPing = sorted[0]?.timestamp || ''
 
-        setDashboardData((prev) => ({
-          ...prev,
-          pingCount: count,
-          uptime,
-          lastPing,
-        }))
-      } catch (err: any) {
-        console.error('Failed to fetch logs', err)
-      }
+      setDashboardData((prev) => ({
+        ...prev,
+        pingCount: count,
+        uptime,
+        lastPing,
+      }))
+    } catch (err: any) {
+      console.error('Failed to fetch logs', err)
     }
+  }
 
+  useEffect(() => {
     fetchLogs()
     const id = setInterval(fetchLogs, POLL_INTERVAL_MS)
     return () => clearInterval(id)
@@ -198,16 +198,24 @@ const ValidatorDashboard: React.FC = () => {
                     Monitor and manage your validator node
                   </p>
                 </div>
-                <Button
-                  onClick={toggleValidator}
-                  className={
-                    isStarted
-                      ? 'bg-red-500 hover:bg-red-600'
-                      : 'bg-green-500 hover:bg-green-600'
-                  }
-                >
-                  {isStarted ? 'Stop Validator' : 'Start Validator'}
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={fetchLogs}
+                    variant="outline"
+                  >
+                    Reload
+                  </Button>
+                  <Button
+                    onClick={toggleValidator}
+                    className={
+                      isStarted
+                        ? 'bg-red-500 hover:bg-red-600'
+                        : 'bg-green-500 hover:bg-green-600'
+                    }
+                  >
+                    {isStarted ? 'Stop Validator' : 'Start Validator'}
+                  </Button>
+                </div>
               </div>
 
               {/* Summary Cards */}
@@ -349,7 +357,7 @@ const ValidatorDashboard: React.FC = () => {
                     <CardHeader>
                       <CardTitle>Validator Location</CardTitle>
                       <CardDescription>
-                        Your validator’s geographic position in the network
+                        Your validator's geographic position in the network
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
