@@ -15,12 +15,14 @@ import { Card, CardContent } from '@/components/ui/card'
 interface LogEntry {
   timestamp: string
   latency: number
+  site?: string
 }
 
 interface MinuteBucket {
   formattedTime: string
   pingTime: number | null
   isDown?: boolean
+  site?: string
 }
 
 let historyCache: LogEntry[] | null = null
@@ -45,6 +47,9 @@ const CustomTooltip = ({
         <Card>
           <CardContent className="p-4 space-y-1">
             <p className="text-sm font-medium">{label}</p>
+            {entry.site && (
+              <p className="text-xs text-muted-foreground">{entry.site}</p>
+            )}
             <p className="text-sm font-semibold text-red-500">Down</p>
           </CardContent>
         </Card>
@@ -71,6 +76,9 @@ const CustomTooltip = ({
       <Card>
         <CardContent className="p-4 space-y-1">
           <p className="text-sm font-medium">{label}</p>
+          {entry.site && (
+            <p className="text-xs text-muted-foreground">{entry.site}</p>
+          )}
           <p className="text-sm">
             Ping Time: <span className="font-semibold">{pingTime} ms</span>
           </p>
@@ -105,6 +113,7 @@ const PingChart: React.FC<PingChartProps> = ({ isStarted }) => {
             formattedTime: formatLabel(log.timestamp),
             pingTime: log.latency === 0 ? null : log.latency,
             isDown: log.latency === 0,
+            site: (log as any).site,
           }))
         setData(slice)
         return
@@ -116,13 +125,14 @@ const PingChart: React.FC<PingChartProps> = ({ isStarted }) => {
         if (json.success && Array.isArray(json.logs)) {
           historyCache = json.logs
           historyCacheTime = now
-          const slice = (json.logs as LogEntry[])
+          const slice = (json.logs as any[])
             .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
             .slice(-60)
             .map((log) => ({
               formattedTime: formatLabel(log.timestamp),
               pingTime: log.latency === 0 ? null : log.latency,
               isDown: log.latency === 0,
+              site: log.site,
             }))
           setData(slice)
         }
@@ -144,13 +154,14 @@ const PingChart: React.FC<PingChartProps> = ({ isStarted }) => {
           if (json?.success && Array.isArray(json.logs)) {
             historyCache = json.logs
             historyCacheTime = Date.now()
-            const slice = (json.logs as LogEntry[])
+            const slice = (json.logs as any[])
               .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
               .slice(-60)
               .map((log) => ({
                 formattedTime: formatLabel(log.timestamp),
                 pingTime: log.latency === 0 ? null : log.latency,
                 isDown: log.latency === 0,
+                site: log.site,
               }))
             setData(slice)
           }
@@ -173,6 +184,7 @@ const PingChart: React.FC<PingChartProps> = ({ isStarted }) => {
           timeStamp: string
           consensus: 'UP' | 'DOWN'
           responseTime?: number
+          url?: string
         }
         const isDown = msg.consensus === 'DOWN'
         const pingTime = isDown ? null : msg.responseTime ?? null
@@ -182,6 +194,7 @@ const PingChart: React.FC<PingChartProps> = ({ isStarted }) => {
             formattedTime: formatLabel(msg.timeStamp),
             pingTime,
             isDown,
+            site: msg.url,
           },
         ])
       } catch {
