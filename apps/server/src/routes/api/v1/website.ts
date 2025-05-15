@@ -1,4 +1,4 @@
-import { Response, Router } from "express";
+import { Response, Router, Request } from "express";
 import prisma from "../../../prismaClient";
 import {
   authMiddleware,
@@ -11,8 +11,12 @@ const websiteRouter = Router();
 websiteRouter.post(
   "/websites",
   authMiddleware,
-  async (req: AuthenticatedRequest, res: Response): Promise<any> => {
-    const user = req.user;
+  async (req: Request, res: Response): Promise<any> => {
+    const user = (req as AuthenticatedRequest).user;
+    if (!user?.id) {
+      return res.status(401).json({ message: "User not authenticated" });
+    }
+
     const { url, description } = req.body;
 
     if (!url) {
@@ -28,8 +32,8 @@ websiteRouter.post(
       const website = await prisma.website.create({
         data: {
           url,
-          description,
-          userId: user!.id,
+          description: description || '',
+          userId: user.id,
         },
       });
 
@@ -46,12 +50,15 @@ websiteRouter.post(
 websiteRouter.get(
   "/websites",
   authMiddleware,
-  async (req: AuthenticatedRequest, res: Response): Promise<any> => {
-    const userId = req.user?.id;
+  async (req: Request, res: Response): Promise<any> => {
+    const user = (req as AuthenticatedRequest).user;
+    if (!user?.id) {
+      return res.status(401).json({ message: "User not authenticated" });
+    }
 
     try {
       const websites = await prisma.website.findMany({
-        where: { userId },
+        where: { userId: user.id },
         orderBy: { createdAt: "desc" },
       });
       return res.json({ websites });
@@ -67,14 +74,18 @@ websiteRouter.get(
 websiteRouter.put(
   "/websites/:id",
   authMiddleware,
-  async (req: AuthenticatedRequest, res: Response): Promise<any> => {
+  async (req: Request, res: Response): Promise<any> => {
+    const user = (req as AuthenticatedRequest).user;
+    if (!user?.id) {
+      return res.status(401).json({ message: "User not authenticated" });
+    }
+
     const { id } = req.params;
     const { url } = req.body;
-    const userId = req.user?.id;
 
     try {
       const website = await prisma.website.findUnique({ where: { id } });
-      if (!website || website.userId !== userId) {
+      if (!website || website.userId !== user.id) {
         return res
           .status(403)
           .json({ message: "Not allowed to edit this website" });
@@ -97,13 +108,17 @@ websiteRouter.put(
 websiteRouter.delete(
   "/websites/:id",
   authMiddleware,
-  async (req: AuthenticatedRequest, res: Response): Promise<any> => {
+  async (req: Request, res: Response): Promise<any> => {
+    const user = (req as AuthenticatedRequest).user;
+    if (!user?.id) {
+      return res.status(401).json({ message: "User not authenticated" });
+    }
+
     const { id } = req.params;
-    const userId = req.user?.id;
 
     try {
       const website = await prisma.website.findUnique({ where: { id } });
-      if (!website || website.userId !== userId) {
+      if (!website || website.userId !== user.id) {
         return res.status(403).json({ message: "Not authorized" });
       }
 
@@ -121,9 +136,13 @@ websiteRouter.delete(
 websiteRouter.get(
   "/websites/:id/history",
   authMiddleware,
-  async (req: AuthenticatedRequest, res: Response): Promise<any> => {
+  async (req: Request, res: Response): Promise<any> => {
+    const user = (req as AuthenticatedRequest).user;
+    if (!user?.id) {
+      return res.status(401).json({ message: "User not authenticated" });
+    }
+
     const { id } = req.params;
-    const userId = req.user!.id;
     const limit = Math.min(Number(req.query.limit) || 50, 100);
     const page = Math.max(Number(req.query.page) || 1, 1);
     const skip = (page - 1) * limit;
@@ -131,7 +150,7 @@ websiteRouter.get(
     try {
       // ownership check
       const website = await prisma.website.findUnique({ where: { id } });
-      if (!website || website.userId !== userId) {
+      if (!website || website.userId !== user.id) {
         return res
           .status(403)
           .json({ message: "Not authorized to view this website's history" });
@@ -167,9 +186,13 @@ websiteRouter.get(
 websiteRouter.put(
   "/websites/:id/pause",
   authMiddleware,
-  async (req: AuthenticatedRequest, res: Response): Promise<any> => {
+  async (req: Request, res: Response): Promise<any> => {
+    const user = (req as AuthenticatedRequest).user;
+    if (!user?.id) {
+      return res.status(401).json({ message: "User not authenticated" });
+    }
+
     const { id } = req.params;
-    const userId = req.user!.id;
     const { paused } = req.body;
 
     if (typeof paused !== "boolean") {
@@ -178,7 +201,7 @@ websiteRouter.put(
 
     try {
       const website = await prisma.website.findUnique({ where: { id } });
-      if (!website || website.userId !== userId) {
+      if (!website || website.userId !== user.id) {
         return res.status(403).json({ message: "Not authorized" });
       }
 
@@ -200,51 +223,54 @@ websiteRouter.put(
 
 // GET /api/websites/:id/summary
 websiteRouter.get(
-    "/websites/:id/summary",
-    authMiddleware,
-    async (req: AuthenticatedRequest, res: Response): Promise<any> => {
-      const { id } = req.params
-      const userId = req.user!.id
-  
-      try {
-        const website = await prisma.website.findUnique({ where: { id } })
-        if (!website || website.userId !== userId) {
-          return res.status(403).json({ message: "Not authorized" })
-        }
-  
-        // ✅ Remove validatorId filter so we pick up the actual last ping
-        const [ latestLog, totalLogs, upLogs ] = await Promise.all([
-          prisma.validatorLog.findFirst({
-            where: { site: website.url },
-            orderBy: { timestamp: "desc" },
-          }),
-          prisma.validatorLog.count({ where: { site: website.url } }),
-          prisma.validatorLog.count({ where: { site: website.url, status: "UP" } }),
-        ])
-  
-        const uptimePercent =
-          totalLogs > 0 ? ((upLogs / totalLogs) * 100).toFixed(2) : "N/A"
-  
-        return res.json({
-          url:         website.url,
-          status:      latestLog?.status ?? "N/A",
-          lastChecked: latestLog?.timestamp,             // ← real timestamp
-          uptime:      uptimePercent,                  
-          latency:     (latestLog as any)?.latency ?? 0, // ← real ms
-          paused:      website.paused,
-        })
-      } catch (error: any) {
-        return res
-          .status(500)
-          .json({ message: "Failed to fetch summary", error: error.message })
-      }
+  "/websites/:id/summary",
+  authMiddleware,
+  async (req: Request, res: Response): Promise<any> => {
+    const user = (req as AuthenticatedRequest).user;
+    if (!user?.id) {
+      return res.status(401).json({ message: "User not authenticated" });
     }
-  );
+
+    const { id } = req.params;
+
+    try {
+      const website = await prisma.website.findUnique({ where: { id } });
+      if (!website || website.userId !== user.id) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+
+      const [latestLog, totalLogs, upLogs] = await Promise.all([
+        prisma.validatorLog.findFirst({
+          where: { site: website.url },
+          orderBy: { timestamp: "desc" },
+        }),
+        prisma.validatorLog.count({ where: { site: website.url } }),
+        prisma.validatorLog.count({ where: { site: website.url, status: "UP" } }),
+      ]);
+
+      const uptimePercent =
+        totalLogs > 0 ? ((upLogs / totalLogs) * 100).toFixed(2) : "N/A";
+
+      return res.json({
+        url: website.url,
+        status: latestLog?.status ?? "N/A",
+        lastChecked: latestLog?.timestamp,
+        uptime: uptimePercent,
+        latency: (latestLog as any)?.latency ?? 0,
+        paused: website.paused,
+      });
+    } catch (error: any) {
+      return res
+        .status(500)
+        .json({ message: "Failed to fetch summary", error: error.message });
+    }
+  }
+);
 
 // GET /api/validators/:id/meta
 websiteRouter.get(
   "/validators/:id/meta",
-  async (req: AuthenticatedRequest, res: Response): Promise<any> => {
+  async (req: Request, res: Response): Promise<any> => {
     const validatorId = Number(req.params.id);
     if (isNaN(validatorId)) {
       return res.status(400).json({ message: "Invalid validator ID" });

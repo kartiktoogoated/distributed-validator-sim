@@ -1,22 +1,20 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from 'jsonwebtoken';
+import { User } from '@prisma/client';
 
 const JWT_SECRET = process.env.JWT_SECRET!;
 
-interface JwtPayload{
+interface JwtPayload {
     userId: string;
     email: string;
 }
 
 export interface AuthenticatedRequest extends Request {
-    user?: {
-        id: string;
-        email: string;
-    };
+    user?: Pick<User, 'id' | 'email' | 'isVerified'>;
 }
 
 export const authMiddleware = (
-    req:AuthenticatedRequest,
+    req: Request,
     res: Response,
     next: NextFunction
 ): void => {
@@ -31,7 +29,12 @@ export const authMiddleware = (
 
     try {
         const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload;
-        req.user = { id: decoded.userId, email: decoded.email };
+        // Set the user from the JWT payload
+        (req as AuthenticatedRequest).user = {
+            id: decoded.userId,
+            email: decoded.email,
+            isVerified: true
+        };
         next();
     } catch (error) {
         res.status(401).json({ message: "Unauthorized: Invalid token" });
