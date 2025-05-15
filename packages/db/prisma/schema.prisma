@@ -53,7 +53,7 @@ model PendingUser {
 model User {
   id         String    @id @default(uuid())
   email      String    @unique
-  password   String?
+  password   String
   isVerified Boolean   @default(true)
   createdAt  DateTime  @default(now())
   googleId   String?   @unique
