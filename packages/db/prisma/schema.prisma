@@ -56,7 +56,6 @@ model User {
   password   String
   isVerified Boolean   @default(true)
   createdAt  DateTime  @default(now())
-  googleId   String?   @unique
 
   websites   Website[]
 }

@@ -4,7 +4,6 @@ import { authRateLimiter } from '../../../middlewares/rateLimiter';
 import { PublicKey } from '@solana/web3.js';
 import nacl from 'tweetnacl';
 import prisma from '../../../prismaClient';
-import { googleAuth, googleCallback, handleGoogleSuccess } from '../../../controllers/googleController';
 
 const authRouter = Router();
 
@@ -15,10 +14,6 @@ authRouter.use(authRateLimiter);
 authRouter.post('/signup', signup);
 authRouter.post('/verify-otp', verifyPendingSignup);
 authRouter.post('/signin', signin);
-
-// Google OAuth routes
-authRouter.get('/google', googleAuth);
-authRouter.get('/google/callback', googleCallback, handleGoogleSuccess);
 
 authRouter.post('/verify-wallet', async (req: Request, res: Response): Promise<void> => {
     try {
