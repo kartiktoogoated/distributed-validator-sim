@@ -22,8 +22,10 @@ ENV PNPM_DISABLE_SELF_UPDATE_CHECK=1
 ENV CI=true
 
 # Build the server
-WORKDIR /app/apps/server
+WORKDIR /app/packages/db
 RUN pnpm exec prisma generate
+
+WORKDIR /app/apps/server
 RUN pnpm run build
 
 # 2) Runner
