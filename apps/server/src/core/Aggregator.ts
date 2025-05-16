@@ -144,8 +144,9 @@ export async function startKafkaConsumer() {
   await consumer.connect();
   info('Aggregator connected to Kafka');
 
-  await consumer.subscribe({ topic: 'validator-logs', fromBeginning: false });
-  info('Subscribed to validator-logs topic');
+  const topic = process.env.KAFKA_TOPIC!;
+  await consumer.subscribe({ topic, fromBeginning: false });
+  info(`Subscribed to ${topic} topic`);
 
   await consumer.run({
     eachMessage: async ({ message }) => {

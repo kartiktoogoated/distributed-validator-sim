@@ -88,7 +88,7 @@ export class Validator {
 
     // Send status to Kafka with location
     try {
-      await sendToTopic("validator-logs", {
+      await sendToTopic(process.env.KAFKA_TOPIC!, {
         validatorId: this.id,
         url: siteUrl,
         status,
