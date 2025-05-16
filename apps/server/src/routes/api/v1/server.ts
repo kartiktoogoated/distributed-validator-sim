@@ -23,7 +23,7 @@ const PORT = Number(process.env.PORT) || 3000;
 const isAggregator = process.env.IS_AGGREGATOR === "true";
 
 // ── Security & parsing ─────────────────
-app.set('trust proxy', true);
+app.set('trust proxy', 1);
 app.use(helmet());
 app.use(cors({ origin: "https://www.deepfry.tech", credentials: true }));
 app.use(express.json());
