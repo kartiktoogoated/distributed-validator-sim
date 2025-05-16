@@ -188,15 +188,31 @@ const PingChart: React.FC<PingChartProps> = ({ isStarted }) => {
         }
         const isDown = msg.consensus === 'DOWN'
         const pingTime = isDown ? null : msg.responseTime ?? null
-        setData((prev) => [
-          ...prev.slice(-59),
-          {
-            formattedTime: formatLabel(msg.timeStamp),
-            pingTime,
-            isDown,
-            site: msg.url,
-          },
-        ])
+        setData((prev) => {
+          const newData = [
+            ...prev.slice(-59),
+            {
+              formattedTime: formatLabel(msg.timeStamp),
+              pingTime,
+              isDown,
+              site: msg.url,
+            },
+          ]
+          // Update cache
+          if (historyCache) {
+            historyCache = [
+              ...historyCache,
+              {
+                timestamp: msg.timeStamp,
+                latency: pingTime || 0,
+                status: msg.consensus,
+                site: msg.url
+              }
+            ].slice(-60)
+            historyCacheTime = Date.now()
+          }
+          return newData
+        })
       } catch {
         // ignore
       }

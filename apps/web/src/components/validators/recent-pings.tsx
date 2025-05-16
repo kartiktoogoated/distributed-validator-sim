@@ -11,6 +11,9 @@ interface LogEntry {
   status: 'UP' | 'DOWN';
   latency: number;
   timestamp: string;
+  validatorId?: number;
+  location?: string;
+  responseTime?: number;
 }
 
 interface RecentPingsProps {
@@ -28,15 +31,19 @@ const formatTime = (timestamp: string) => {
 const RecentPings: React.FC<RecentPingsProps> = ({ isStarted }) => {
   const [pings, setPings] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
 
   const load = async () => {
     try {
-      const res = await fetch('/api/logs?validatorId=0');
+      const res = await fetch('/api/logs');
       if (!res.ok) return;
       const json = await res.json();
       if (json.success && Array.isArray(json.logs)) {
-        setPings(json.logs.slice(0, 15));
+        // Sort by timestamp and get the most recent 15 pings
+        const sorted = json.logs
+          .sort((a: LogEntry, b: LogEntry) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+          .slice(0, 15);
+        setPings(sorted);
         setLoading(false);
       }
     } catch (e) {
@@ -49,19 +56,67 @@ const RecentPings: React.FC<RecentPingsProps> = ({ isStarted }) => {
     load();
   }, []);
 
-  // 2) start/stop polling when isStarted changes
+  // 2) WebSocket for real-time updates
   useEffect(() => {
-    if (isStarted) {
-      intervalRef.current = setInterval(load, 10_000);
-    } else if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
-    }
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
+    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const ws = new WebSocket(`${proto}://${window.location.host}/api/ws`);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      console.info('WebSocket connected for pings');
+      // Load initial state
+      load();
+    };
+
+    ws.onmessage = (ev) => {
+      try {
+        const data = JSON.parse(ev.data);
+        if (data.type === 'individual-ping') {
+          setPings((prev) => [
+            {
+              id: Date.now() + Math.random(),
+              timestamp: data.timestamp,
+              status: data.status,
+              latency: data.latency,
+              site: data.url || 'Unknown',
+              validatorId: data.validatorId,
+              location: data.location,
+            },
+            ...prev,
+          ].slice(0, 15));
+        } else if (data.timeStamp && data.consensus && Array.isArray(data.votes)) {
+          // For each validator's vote, add a ping
+          setPings((prev) => {
+            const newPings = data.votes.map((vote: LogEntry) => ({
+              id: Date.now() + Math.random(), // ensure unique
+              timestamp: data.timeStamp,
+              status: vote.status,
+              latency: (vote.responseTime !== undefined ? vote.responseTime : vote.latency) || 0,
+              site: data.url || 'Unknown',
+              validatorId: vote.validatorId,
+              location: vote.location
+            }));
+            // Prepend new pings, keep only the latest 15
+            return [...newPings, ...prev].slice(0, 15);
+          });
+        }
+      } catch (e) {
+        console.error('Failed to parse WebSocket message', e);
       }
     };
+
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
+  }, []);
+
+  // 3) Polling backup (every 30s) when started
+  useEffect(() => {
+    if (!isStarted) return;
+    const id = setInterval(load, 30_000);
+    return () => clearInterval(id);
   }, [isStarted]);
 
   return (
@@ -93,11 +148,24 @@ const RecentPings: React.FC<RecentPingsProps> = ({ isStarted }) => {
             >
               <div>
                 <div className="font-medium">{ping.site}</div>
-                <div className="text-sm text-muted-foreground flex items-center">
+                <div className="text-sm text-muted-foreground flex items-center space-x-2">
                   {ping.status === 'UP' ? (
                     <>
-                      <span className="mr-2">{ping.latency}ms</span>
+                      <span>{ping.latency}ms</span>
+                      <span>•</span>
                       <span>{formatTime(ping.timestamp)}</span>
+                      {ping.validatorId && (
+                        <>
+                          <span>•</span>
+                          <span>Validator {ping.validatorId}</span>
+                        </>
+                      )}
+                      {ping.location && (
+                        <>
+                          <span>•</span>
+                          <span>{ping.location}</span>
+                        </>
+                      )}
                     </>
                   ) : (
                     <span className="text-destructive">Connection failed</span>

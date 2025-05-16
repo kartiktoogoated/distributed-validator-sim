@@ -180,6 +180,20 @@ export async function startKafkaConsumer() {
           timestamp: Date.now()
         });
 
+        // Broadcast individual ping over WebSocket
+        const individualPingMsg = JSON.stringify({
+          type: 'individual-ping',
+          url: payload.url,
+          status: payload.status,
+          latency: payload.latencyMs,
+          validatorId: payload.validatorId,
+          location: payload.location,
+          timestamp: payload.timestamp,
+        });
+        wsServer.clients.forEach((c) => {
+          if (c.readyState === c.OPEN) c.send(individualPingMsg);
+        });
+
         // Update metrics
         voteCounter.inc({ status: payload.status });
         voteLatencyHistogram.observe(payload.latencyMs / 1000); // Convert to seconds
@@ -296,12 +310,28 @@ async function processQuorum() {
     const payload = {
       url: site,
       consensus,
-      votes: entries,
+      votes: entries.map(e => ({
+        status: e.status,
+        weight: e.weight,
+        responseTime: e.responseTime,
+        location: e.location,
+        validatorId: e.validatorId
+      })),
       timeStamp: timeBucket+':00',
+      upCount,
+      totalVotes: entries.length,
+      quorum: QUORUM,
+      processingTime: (Date.now() - startTime) / 1000
     };
     const msg = JSON.stringify(payload);
     wsServer.clients.forEach((c) => {
-      if (c.readyState === c.OPEN) c.send(msg);
+      if (c.readyState === c.OPEN) {
+        try {
+          c.send(msg);
+        } catch (err) {
+          logError(`Failed to send WS message: ${(err as Error).message}`);
+        }
+      }
     });
 
     // c) Publish to Kafka

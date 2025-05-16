@@ -93,9 +93,9 @@ if (isAggregator) {
   info("🧿 Running as Validator");
 
   (async () => {
+    const { startKafkaProducer } = await import("../../../services/producer");
+    await startKafkaProducer();
     const { pollAndGossip } = await import("../../../core/pinger");
-    const { RaftNode } = await import("../../../core/raft");
-    const { initRaftRouter } = await import("./raftServer");
     const { default: createSimulationRouter } = await import("./simulation");
 
     if (!process.env.VALIDATOR_ID) {
@@ -103,19 +103,7 @@ if (isAggregator) {
     }
 
     app.use("/api/simulate", createSimulationRouter(wss));
-
-    const peers = (process.env.PEERS || "")
-      .split(",")
-      .map((p) => p.trim().replace(/^https?:\/\//, "").replace(/\/+$/, ""))
-      .filter(Boolean);
-
-    const nodeId = Number(process.env.VALIDATOR_ID);
-    const raftNode = new RaftNode(nodeId, peers, (cmd) => {
-      const message = JSON.stringify({ type: "raft-commit", data: cmd });
-      wss.clients.forEach((c) => { if (c.readyState === c.OPEN) c.send(message); });
-    });
-
-    app.use("/api/raft", initRaftRouter(raftNode));
+    // No Raft setup in validators
   })();
 }
 

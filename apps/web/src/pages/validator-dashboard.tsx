@@ -20,12 +20,26 @@ import ValidatorMap from '@/components/validators/validator-map'
 import ValidatorSettings from '@/components/validators/validator-settings'
 import PingChart from '@/components/validators/ping-chart'
 import { comingSoon } from '@/lib/utils'
+import { cn } from '@/lib/utils'
+import { Badge } from '@/components/ui/badge'
 
 interface DashboardData {
   uptime: number
   pingCount: number
   lastPing: string
   performanceScore: number
+  quorumDetails?: {
+    upCount: number
+    totalVotes: number
+    quorum: number
+    processingTime: number
+    validatorVotes: Array<{
+      validatorId: number
+      status: 'UP' | 'DOWN'
+      responseTime: number
+      location: string
+    }>
+  }
 }
 
 interface LogEntry {
@@ -56,107 +70,190 @@ const ValidatorDashboard: React.FC = () => {
   const totalMessages = useRef(0)
   const totalUpPercent = useRef(0)
 
+  // Move fetchLogs to top-level so it can be used by the button and polling
+  const fetchLogs = async () => {
+    try {
+      const res = await fetch('/api/logs');
+      const data = await res.json();
+      // Backend returns { success, logs }
+      if (data.success && Array.isArray(data.logs)) {
+        const sorted = data.logs.sort(
+          (a: LogEntry, b: LogEntry) =>
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+        );
+        const count = sorted.length;
+        const upCount = sorted.filter((l: LogEntry) => l.status === 'UP').length;
+        const uptime = count ? Math.round((upCount / count) * 100) : 0;
+        const lastPing = sorted[0]?.timestamp || '';
+
+        setDashboardData((prev) => ({
+          ...prev,
+          pingCount: count,
+          uptime,
+          lastPing,
+        }));
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch logs', err);
+    }
+  };
+
   //
   // 1) Seed initial round from GET /api/simulate
   //
   useEffect(() => {
-    if (!isStarted) return
-    fetch('/api/simulate')
-      .then((r) => r.json())
-      .then(({ payloads }: any) => {
-        if (!Array.isArray(payloads)) return
-        const count = payloads.length
-        const upCount = payloads.filter((p: any) => p.consensus === 'UP').length
-        const uptime = count ? Math.round((upCount / count) * 100) : 0
-        const last = payloads[payloads.length - 1]
-        const lastPing = last?.timeStamp || ''
-        const perf =
-          last && Array.isArray(last.votes)
-            ? Math.round(
-                (last.votes.filter((v: any) => v.status === 'UP').length /
-                  last.votes.length) *
-                  100
-              )
-            : 0
+    const loadInitialData = async () => {
+      try {
+        const [simulateRes, logsRes] = await Promise.all([
+          fetch('/api/simulate'),
+          fetch('/api/logs')
+        ]);
 
-        // reset WS counters
-        totalMessages.current = 0
-        totalUpPercent.current = 0
+        const simulateData = await simulateRes.json();
+        const logsData = await logsRes.json();
 
-        setDashboardData({
-          pingCount: count,
-          uptime,
-          lastPing,
-          performanceScore: perf,
-        })
-      })
-      .catch((err) => console.error('Initial simulate fetch failed', err))
-  }, [isStarted])
+        if (simulateData.payloads && Array.isArray(simulateData.payloads)) {
+          const count = simulateData.payloads.length;
+          const upCount = simulateData.payloads.filter((p: any) => p.consensus === 'UP').length;
+          const uptime = count ? Math.round((upCount / count) * 100) : 0;
+          const last = simulateData.payloads[simulateData.payloads.length - 1];
+          const lastPing = last?.timeStamp || '';
+          const perf =
+            last && Array.isArray(last.votes)
+              ? Math.round(
+                  (last.votes.filter((v: any) => v.status === 'UP').length /
+                    last.votes.length) *
+                    100
+                )
+              : 0;
+
+          // reset WS counters
+          totalMessages.current = 0;
+          totalUpPercent.current = 0;
+
+          setDashboardData({
+            pingCount: count,
+            uptime,
+            lastPing,
+            performanceScore: perf,
+          });
+        }
+
+        if (logsData.success && Array.isArray(logsData.logs)) {
+          const sorted = logsData.logs.sort(
+            (a: LogEntry, b: LogEntry) =>
+              new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          );
+          const count = sorted.length;
+          const upCount = sorted.filter((l: LogEntry) => l.status === 'UP').length;
+          const uptime = count ? Math.round((upCount / count) * 100) : 0;
+          const lastPing = sorted[0]?.timestamp || '';
+
+          setDashboardData(prev => ({
+            ...prev,
+            pingCount: count,
+            uptime,
+            lastPing,
+          }));
+        }
+      } catch (err) {
+        console.error('Failed to load initial data:', err);
+      }
+    };
+
+    loadInitialData();
+  }, []);
 
   //
   // 2) Poll `/api/logs` every minute to update pingCount, uptime, lastPing
   //
-  const fetchLogs = async () => {
-    try {
-      const res = await fetch('/api/logs')
-      const { logs }: { logs: LogEntry[] } = await res.json()
-      const sorted = logs.sort(
-        (a, b) =>
-          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-      )
-      const count = sorted.length
-      const upCount = sorted.filter((l) => l.status === 'UP').length
-      const uptime = count ? Math.round((upCount / count) * 100) : 0
-      const lastPing = sorted[0]?.timestamp || ''
-
-      setDashboardData((prev) => ({
-        ...prev,
-        pingCount: count,
-        uptime,
-        lastPing,
-      }))
-    } catch (err: any) {
-      console.error('Failed to fetch logs', err)
-    }
-  }
-
   useEffect(() => {
-    fetchLogs()
-    const id = setInterval(fetchLogs, POLL_INTERVAL_MS)
-    return () => clearInterval(id)
-  }, [])
+    // Initial fetch
+    fetchLogs();
+
+    // Set up polling interval
+    const id = setInterval(fetchLogs, POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, []);
 
   //
   // 3) Open WebSocket once for live performance updates
   //
   useEffect(() => {
-    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    const ws = new WebSocket(`${proto}://${window.location.host}/api/ws`)
+    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const ws = new WebSocket(`${proto}://${window.location.host}/api/ws`);
 
-    ws.onopen = () => console.info('WebSocket connected')
-    ws.onerror = (err) => console.error('WebSocket error', err)
+    ws.onopen = () => {
+      console.info('WebSocket connected');
+      // Request initial state when connection is established
+      fetch('/api/logs').then(r => r.json()).then(({ logs }) => {
+        if (Array.isArray(logs)) {
+          const sorted = logs.sort(
+            (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          );
+          const count = sorted.length;
+          const upCount = sorted.filter(l => l.status === 'UP').length;
+          const uptime = count ? Math.round((upCount / count) * 100) : 0;
+          const lastPing = sorted[0]?.timestamp || '';
+
+          setDashboardData(prev => ({
+            ...prev,
+            pingCount: count,
+            uptime,
+            lastPing,
+          }));
+        }
+      });
+    };
+    ws.onerror = (err) => console.error('WebSocket error', err);
 
     ws.onmessage = (event) => {
-      const { votes } = JSON.parse(event.data) as {
-        votes: { status: 'UP' | 'DOWN'; weight: number }[]
+      try {
+        const data = JSON.parse(event.data);
+        // Handle consensus updates
+        if (data.votes) {
+          const { upCount, totalVotes, quorum, processingTime } = data;
+          const upPercent = Math.round((upCount / totalVotes) * 100);
+
+          totalMessages.current += 1;
+          totalUpPercent.current += upPercent;
+
+          setDashboardData((prev) => ({
+            ...prev,
+            performanceScore: upPercent,
+            uptime: Math.round((totalUpPercent.current / totalMessages.current) * 10) / 10,
+            quorumDetails: {
+              upCount,
+              totalVotes,
+              quorum,
+              processingTime,
+              validatorVotes: data.votes
+            }
+          }));
+
+          // Show toast for consensus
+          toast({
+            title: `Consensus: ${data.consensus}`,
+            description: `${upCount}/${totalVotes} validators UP (${upPercent}%)`,
+            duration: 5000
+          });
+        }
+        // Handle individual ping updates
+        else if (data.timeStamp && data.consensus) {
+          setDashboardData((prev) => ({
+            ...prev,
+            pingCount: prev.pingCount + 1,
+            lastPing: data.timeStamp,
+            performanceScore: data.consensus === 'UP' ? 100 : 0
+          }));
+        }
+      } catch (err) {
+        console.error('Failed to parse WebSocket message', err);
       }
-      const upCount = votes.filter((v) => v.status === 'UP').length
-      const upPercent = Math.round((upCount / votes.length) * 100)
+    };
 
-      totalMessages.current += 1
-      totalUpPercent.current += upPercent
-
-      setDashboardData((prev) => ({
-        ...prev,
-        performanceScore: upPercent,
-        uptime:
-          Math.round((totalUpPercent.current / totalMessages.current) * 10) /
-          10,
-      }))
-    }
-
-    return () => ws.close()
-  }, [])
+    return () => ws.close();
+  }, [toast]);
 
   //
   // 4) Start / Stop single-validator on toggle
@@ -303,6 +400,75 @@ const ValidatorDashboard: React.FC = () => {
                   </CardContent>
                 </Card>
               </div>
+
+              {/* Quorum Details */}
+              {dashboardData.quorumDetails && (
+                <Card className="md:col-span-2">
+                  <CardHeader>
+                    <CardTitle>Quorum Details</CardTitle>
+                    <CardDescription>
+                      Latest consensus details from the validator network
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div>
+                          <div className="text-sm font-medium text-muted-foreground">UP Votes</div>
+                          <div className="text-2xl font-bold">{dashboardData.quorumDetails.upCount}</div>
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium text-muted-foreground">Total Votes</div>
+                          <div className="text-2xl font-bold">{dashboardData.quorumDetails.totalVotes}</div>
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium text-muted-foreground">Required Quorum</div>
+                          <div className="text-2xl font-bold">{dashboardData.quorumDetails.quorum}</div>
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium text-muted-foreground">Processing Time</div>
+                          <div className="text-2xl font-bold">{dashboardData.quorumDetails.processingTime.toFixed(2)}s</div>
+                        </div>
+                      </div>
+
+                      {/* Validator Votes */}
+                      <div className="mt-4">
+                        <div className="text-sm font-medium text-muted-foreground mb-2">Validator Votes</div>
+                        <div className="grid gap-2">
+                          {dashboardData.quorumDetails.validatorVotes.map((vote) => (
+                            <div
+                              key={vote.validatorId}
+                              className={cn(
+                                'flex items-center justify-between p-2 rounded-md border',
+                                vote.status === 'UP' ? 'border-green-500/20 bg-green-500/5' : 'border-red-500/20 bg-red-500/5'
+                              )}
+                            >
+                              <div className="flex items-center space-x-2">
+                                <div className={cn(
+                                  'h-2 w-2 rounded-full',
+                                  vote.status === 'UP' ? 'bg-green-500' : 'bg-red-500'
+                                )} />
+                                <div>
+                                  <div className="font-medium">Validator {vote.validatorId}</div>
+                                  <div className="text-sm text-muted-foreground">{vote.location}</div>
+                                </div>
+                              </div>
+                              <div className="flex items-center space-x-4">
+                                <div className="text-sm">
+                                  {vote.responseTime}ms
+                                </div>
+                                <Badge variant={vote.status === 'UP' ? 'default' : 'destructive'}>
+                                  {vote.status}
+                                </Badge>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Tabs */}
               <Tabs defaultValue="performance" className="space-y-4">
