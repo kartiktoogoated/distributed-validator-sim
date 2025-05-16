@@ -285,6 +285,17 @@ async function processQuorum() {
     // Update consensus metric
     consensusGauge.set({ url: site }, consensus === 'UP' ? 1 : 0);
 
+    // Upsert all unique validatorIds before logging
+    const uniqueValidatorIds = Array.from(new Set(entries.map(e => e.validatorId)));
+    for (const validatorId of uniqueValidatorIds) {
+      if (validatorId === 0) continue; // skip consensus row
+      await prisma.validator.upsert({
+        where: { id: validatorId },
+        update: {},
+        create: { id: validatorId, location: entries.find(e => e.validatorId === validatorId)?.location || 'unknown' },
+      });
+    }
+
     // a) Persist raw votes + consensus
     await prisma.validatorLog.createMany({
       data: entries.map((e) => ({

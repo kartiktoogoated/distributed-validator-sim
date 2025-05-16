@@ -59,6 +59,7 @@ export async function startAlertService(wsServer: WebSocketServer): Promise<void
         }
 
         // for each DOWN vote, email + WS-broadcast
+        if (!payload.votes || !Array.isArray(payload.votes)) return;
         for (const v of payload.votes.filter((v) => v.status === "DOWN")) {
           const subject = `🚨 ALERT: ${payload.url} DOWN in ${v.location}`;
           const html = `
