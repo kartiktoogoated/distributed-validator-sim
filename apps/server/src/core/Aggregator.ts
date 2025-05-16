@@ -296,6 +296,13 @@ async function processQuorum() {
       });
     }
 
+    // Upsert the consensus/aggregator row (id: 0)
+    await prisma.validator.upsert({
+      where: { id: 0 },
+      update: {},
+      create: { id: 0, location: 'aggregator' },
+    });
+
     // a) Persist raw votes + consensus
     await prisma.validatorLog.createMany({
       data: entries.map((e) => ({
