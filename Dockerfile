@@ -23,6 +23,7 @@ ENV CI=true
 
 # Build the server
 WORKDIR /app/apps/server
+RUN pnpm exec prisma generate
 RUN pnpm run build
 
 # 2) Runner
