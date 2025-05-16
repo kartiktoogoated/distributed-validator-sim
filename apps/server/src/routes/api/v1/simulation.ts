@@ -8,6 +8,7 @@ import prisma from "../../../prismaClient";
 import { Validator, Status, GossipPayload } from "../../../core/Validator";
 import { GossipManager } from "../../../core/GossipManager";
 import { RaftNode } from "../../../core/raft";
+import { pollAndGossip } from "../../../core/pinger";
 
 // Prometheus metrics
 import { latencyHistogram, statusCounter } from "../../../metrics";
@@ -56,16 +57,9 @@ export default function createSimulationRouter(
     info(`🔁 Simulation loop starting for Validator ${localValidatorId}`);
     loopInterval = setInterval(async () => {
       try {
-        const sites = await prisma.website.findMany({ where: { paused: false } });
-        await Promise.all(
-          sites.map((w) =>
-            executeRoundForUrl(wsServer, w.url).catch((err) =>
-              logError(`Loop round failed for ${w.url}: ${err}`)
-            )
-          )
-        );
+        await pollAndGossip();
       } catch (err) {
-        logError(`Failed to fetch websites in interval: ${err}`);
+        logError(`Failed to poll and gossip in interval: ${err}`);
       }
     }, PING_INTERVAL_MS);
   }

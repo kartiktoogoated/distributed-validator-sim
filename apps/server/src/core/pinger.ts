@@ -8,7 +8,7 @@ import prisma from "../prismaClient";
 // how often to ping (ms)
 const PING_INTERVAL_MS = Number(process.env.PING_INTERVAL_MS ?? 60_000);
 
-// this node’s validator ID & location
+// this node's validator ID & location
 const myValidatorId = Number(process.env.VALIDATOR_ID);
 const myLocation = process.env.LOCATION ?? "unknown";
 
@@ -25,8 +25,8 @@ if (peerList.length === 0) {
 const validator = new Validator(myValidatorId);
 validator.peers = peerList;
 
-async function pollAndGossip() {
-  // fetch every non‑paused site
+export async function pollAndGossip() {
+  // fetch every non-paused site
   let sites;
   try {
     sites = await prisma.website.findMany({ where: { paused: false } });
