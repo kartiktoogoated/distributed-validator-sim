@@ -160,7 +160,8 @@ export async function startKafkaConsumer() {
           location: string; // Added location
         };
 
-        const key = `${payload.url}:${payload.timestamp}`;
+        const timeBucket = payload.timestamp.slice(0, 16); // e.g., "2025-05-16T14:46"
+        const key = `${payload.url}:${timeBucket}`;
         
         // Skip if already processed
         if (processedConsensus.has(key)) {
@@ -184,7 +185,7 @@ export async function startKafkaConsumer() {
         voteLatencyHistogram.observe(payload.latencyMs / 1000); // Convert to seconds
 
         // Process quorum if we have enough votes
-        if (voteBuffer[key].length >= QUORUM) {
+        if (voteBuffer[key].length >= VALIDATOR_IDS.length) {
           await processQuorum();
         }
       } catch (err) {
@@ -254,9 +255,8 @@ async function processQuorum() {
   
   for (const key of Object.keys(voteBuffer)) {
     const entries = voteBuffer[key];
-    if (entries.length < QUORUM) continue;
-
-    const [site, timeStamp] = key.split(':');
+    if (entries.length < VALIDATOR_IDS.length) continue;
+    const [site, timeBucket] = key.split(':');
     const upCount = entries.filter((e) => e.status === 'UP').length;
     const consensus: 'UP' | 'DOWN' =
       upCount >= entries.length - upCount ? 'UP' : 'DOWN';
@@ -266,7 +266,7 @@ async function processQuorum() {
       continue;
     }
 
-    info(`✔️ Consensus for ${site}@${timeStamp}: ${consensus} (${upCount}/${entries.length} UP)`);
+    info(`✔️ Consensus for ${site}@${timeBucket}: ${consensus} (${upCount}/${entries.length} UP)`);
 
     // Update consensus metric
     consensusGauge.set({ url: site }, consensus === 'UP' ? 1 : 0);
@@ -278,7 +278,7 @@ async function processQuorum() {
         site,
         status: e.status,
         latency: e.responseTime,
-        timestamp: new Date(timeStamp),
+        timestamp: new Date(timeBucket+':00'),
       })),
     });
 
@@ -288,12 +288,17 @@ async function processQuorum() {
         site,
         status: consensus,
         latency: 0,
-        timestamp: new Date(timeStamp),
+        timestamp: new Date(timeBucket+':00'),
       },
     });
 
-    // b) Broadcast WS
-    const payload = { url: site, consensus, votes: entries, timeStamp };
+    // b) Broadcast WS (no names)
+    const payload = {
+      url: site,
+      consensus,
+      votes: entries,
+      timeStamp: timeBucket+':00',
+    };
     const msg = JSON.stringify(payload);
     wsServer.clients.forEach((c) => {
       if (c.readyState === c.OPEN) c.send(msg);
@@ -316,7 +321,7 @@ async function processQuorum() {
             from: process.env.ALERT_FROM!,
             to,
             subject: `ALERT: ${site} DOWN in ${e.location}`,
-            text: `Validator ${e.validatorId}@${e.location} reported DOWN at ${timeStamp}.`,
+            text: `Validator ${e.validatorId}@${e.location} reported DOWN at ${timeBucket}:00.`,
           });
           info(`✉️ Alert sent to ${to}`);
         } catch (mailErr) {
