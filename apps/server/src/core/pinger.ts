@@ -18,12 +18,18 @@ const peerList = (process.env.PEERS ?? "")
   .map((h) => h.trim())
   .filter((h) => h);
 
+// Get gossip aggregator if configured
+const gossipAggregator = process.env.GOSSIP_AGGREGATOR;
+
 if (peerList.length === 0) {
   warn("No peers configured");
 }
 
 const validator = new Validator(myValidatorId);
 validator.peers = peerList;
+if (gossipAggregator) {
+  info(`Gossip aggregator configured: ${gossipAggregator}`);
+}
 
 export async function pollAndGossip() {
   // fetch every non-paused site

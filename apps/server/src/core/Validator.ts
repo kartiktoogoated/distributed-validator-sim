@@ -45,12 +45,15 @@ async function cachedLookup(hostname: string) {
 export class Validator {
   public readonly id: number;
   public peers: string[] = [];
-  private lastVotes = new Map<string, Vote>();
+  private lastVotes: Map<string, Vote> = new Map();
+  private gossipAggregator?: string;
   private location: string;
 
   constructor(id: number, location: string = process.env.LOCATION || 'unknown') {
     this.id = id;
     this.location = location;
+    // Get gossip aggregator from env if set
+    this.gossipAggregator = process.env.GOSSIP_AGGREGATOR;
   }
 
   /**
@@ -125,19 +128,32 @@ export class Validator {
       location,
     };
 
+    // Send to Raft peers
     info(`Gossiping ${siteUrl} (${vote.status}) to ${this.peers.length} peers`);
     this.peers.forEach((peer) => {
       fetch(`http://${peer}/api/simulate/gossip`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
-        // you can polyfill fetch or use node-fetch
       })
         .then(() => info(`🔗 Validator ${this.id} → ${peer}: ${vote.status}`))
         .catch((err) =>
           info(`❌ Validator ${this.id} → ${peer} failed: ${err.message}`)
         );
     });
+
+    // Send to gossip aggregator if configured
+    if (this.gossipAggregator) {
+      fetch(`http://${this.gossipAggregator}/api/simulate/gossip`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+        .then(() => info(`📡 Validator ${this.id} → aggregator: ${vote.status}`))
+        .catch((err) =>
+          info(`❌ Validator ${this.id} → aggregator failed: ${err.message}`)
+        );
+    }
   }
 
   public receiveGossip(siteUrl: string, vote: Vote, from: number): void {
