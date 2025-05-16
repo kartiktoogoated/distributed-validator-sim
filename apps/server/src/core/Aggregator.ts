@@ -1,4 +1,3 @@
-import 'express-async-errors';
 import dotenv from 'dotenv'
 dotenv.config();
 
@@ -133,7 +132,7 @@ function cleanupOldVotes() {
 }
 
 // Start Kafka Consumer
-async function startKafkaConsumer() {
+export async function startKafkaConsumer() {
   const kafkaClient = new Kafka({
     clientId: 'aggregator',
     brokers: kafkaBrokerList,
@@ -334,11 +333,6 @@ async function processQuorum() {
     voteLatencyHistogram.observe({ url: site }, processingTime);
   }
 }
-
-// ── SERVER START ────────────────────────────────────────────────────────────
-server.listen(SERVER_PORT, () => {
-  info(`🔌 Aggregator listening on port ${SERVER_PORT}`);
-});
 
 // Regular cleanup of old votes
 setInterval(cleanupOldVotes, 60 * 1000); // Run cleanup every minute
