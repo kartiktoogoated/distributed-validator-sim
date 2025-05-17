@@ -37,9 +37,6 @@ const localLocation = process.env.LOCATION || "unknown";
 // single Validator instance + Raft node
 const validatorInstance = new Validator(localValidatorId);
 validatorInstance.peers = peerAddresses;
-const raftNode = new RaftNode(localValidatorId, peerAddresses, (committed) => {
-  info(`Raft committed: ${JSON.stringify(committed)}`);
-});
 
 export default function createSimulationRouter(
   wsServer: WebSocketServer
@@ -188,15 +185,7 @@ async function executeRoundForUrl(
     timeStamp,
   };
 
-  // — f) propose via Raft
-  try {
-    raftNode.propose(payload);
-    info(`Raft propose successful for ${url}`);
-  } catch {
-    info("Not Raft leader—skipping propose");
-  }
-
-  // — g) broadcast over WebSocket
+  // — f) broadcast over WebSocket
   try {
     const msg = JSON.stringify(payload);
     wsServer.clients.forEach((c) => {

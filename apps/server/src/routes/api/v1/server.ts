@@ -19,7 +19,7 @@ import { globalRateLimiter } from "../../../middlewares/rateLimiter";
 import { register as promRegister } from "../../../metrics";
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = process.env.PORT ? Number(process.env.PORT) : (() => { throw new Error('PORT must be set in environment'); })();
 const isAggregator = process.env.IS_AGGREGATOR === "true";
 
 // ── Security & parsing ─────────────────
@@ -53,7 +53,37 @@ app.get("/health", (_req, res) => {
 
 // ── HTTP + WS setup ────────────────────
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server, path: "/api/ws" });
+const wss = new WebSocketServer({ 
+  server, 
+  path: "/api/ws",
+  perMessageDeflate: false // Disable compression for better performance
+});
+
+// ── WebSocket logging ────────────────────────────────────────────
+wss.on("connection", (client) => {
+  info("WebSocket client connected");
+  
+  // Send initial connection success message
+  client.send(JSON.stringify({ type: "connection", status: "connected" }));
+  
+  client.on("message", (m) => {
+    try {
+      const data = JSON.parse(m.toString());
+      info(`WS message received: ${JSON.stringify(data)}`);
+      // Echo back with timestamp
+      client.send(JSON.stringify({
+        type: "echo",
+        data,
+        timestamp: new Date().toISOString()
+      }));
+    } catch (err) {
+      logError(`Failed to parse WS message: ${err}`);
+    }
+  });
+  
+  client.on("error", (e) => logError(`WS error: ${e.message}`));
+  client.on("close", () => info("WebSocket client disconnected"));
+});
 
 // ── Role-based branching ─────────────────────────────
 if (isAggregator) {
@@ -66,13 +96,12 @@ if (isAggregator) {
     await startKafkaConsumer();
     await startAlertService(wss);
 
-    // Optional: If you plan to do multi-aggregator Raft, enable this block
-    /*
+    // Enable Raft for aggregator only
     const { RaftNode } = await import("../../../core/raft");
     const { initRaftRouter } = await import("./raftServer");
 
-    if (!process.env.VALIDATOR_ID || !process.env.PEERS) {
-      throw new Error("Missing VALIDATOR_ID or PEERS in environment for Aggregator Raft");
+    if (!process.env.VALIDATOR_ID) {
+      throw new Error("Missing VALIDATOR_ID in environment for Aggregator Raft");
     }
 
     const nodeId = Number(process.env.VALIDATOR_ID);
@@ -81,13 +110,30 @@ if (isAggregator) {
       .map((p) => p.trim().replace(/^https?:\/\//, "").replace(/\/+$/, ""))
       .filter(Boolean);
 
-    info(`Aggregator ${nodeId} Raft started with peers: [${peers.join(", ")}]`);
-    const raftNode = new RaftNode(nodeId, peers, (cmd) => {
-      const message = JSON.stringify({ type: "raft-commit", data: cmd });
-      wss.clients.forEach((c) => { if (c.readyState === c.OPEN) c.send(message); });
-    });
-    app.use("/api/raft", initRaftRouter(raftNode));
-    */
+    info(`Aggregator ${nodeId} starting Raft with peers: [${peers.join(", ")}]`);
+    
+    // Initialize Raft node with proper error handling
+    try {
+      const raftNode = new RaftNode(nodeId, peers, (cmd) => {
+        const message = JSON.stringify({ type: "raft-commit", data: cmd });
+        wss.clients.forEach((c) => { 
+          if (c.readyState === c.OPEN) {
+            try {
+              c.send(message);
+            } catch (err) {
+              logError(`Failed to send Raft message: ${err}`);
+            }
+          }
+        });
+      });
+      
+      // Mount Raft router
+      app.use("/api/raft", initRaftRouter(raftNode));
+      info(`Raft router mounted for Aggregator ${nodeId}`);
+    } catch (error: unknown) {
+      logError(`Failed to initialize Raft for Aggregator ${nodeId}: ${error instanceof Error ? error.message : String(error)}`);
+      throw error;
+    }
   })();
 } else {
   info("🧿 Running as Validator");
@@ -116,16 +162,6 @@ app.use("/api", websiteRouter);
 app.use("/api/status", createStatusRouter(wss));
 app.use("/api/logs", createLogsRouter());
 app.use('/api/auth', SolanaRouter);
-
-// ── WebSocket logging ────────────────────────────────────────────
-wss.on("connection", (client) => {
-  info("WebSocket client connected");
-  client.on("message", (m) => {
-    info(`WS message: ${m}`);
-    client.send(`Echo: ${m}`);
-  });
-  client.on("error", (e) => logError(`WS error: ${e.message}`));
-});
 
 // ── Start HTTP server ────────────────────────────────────────────
 server.listen(PORT, "0.0.0.0", () => {

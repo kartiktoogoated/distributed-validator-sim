@@ -12,6 +12,8 @@ import {
   RaftNode,
 } from "../../../core/raft";
 
+// This router should only be mounted in the aggregator, not in validators.
+
 const jsonParser = express.json();
 
 export function initRaftRouter(node: RaftNode): Router {

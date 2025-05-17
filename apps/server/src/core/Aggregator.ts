@@ -1,4 +1,4 @@
-import dotenv from 'dotenv'
+import dotenv from 'dotenv';
 dotenv.config();
 
 import express, { Request, Response } from 'express';
@@ -46,20 +46,57 @@ process.on('uncaughtException', (err) => {
 });
 
 // CONFIG
-const SERVER_PORT = Number(process.env.PORT) || 3000;
+const SERVER_PORT = process.env.PORT ? Number(process.env.PORT) : (() => { throw new AppError('PORT must be set in environment', 500); })();
+
+// Graceful shutdown handler
+function gracefulShutdown(signal: string) {
+  info(`Received ${signal}. Starting graceful shutdown...`);
+  
+  wsServer.close(() => {
+    info('WebSocket server closed');
+  });
+
+  server.close(() => {
+    info('HTTP server closed');
+    process.exit(0);
+  });
+
+  setTimeout(() => {
+    logError('Could not close connections in time, forcefully shutting down');
+    process.exit(1);
+  }, 10000);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// Start server (fail fast on port in use)
+function startServer(port: number): void {
+  server.listen(port, () => {
+    info(`Aggregator listening on port ${port}`);
+  });
+
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      logError(`Port ${port} is already in use. Check you only have one aggregator per PORT.`);
+    } else {
+      logError(`Server error: ${err.stack || err.message}`);
+    }
+    process.exit(1);
+  });
+}
 
 // VALIDATOR_IDS
 if (!process.env.VALIDATOR_IDS) {
   throw new AppError('VALIDATOR_IDS must be set (comma-separated)', 500);
 }
-const VALIDATOR_IDS = process.env.VALIDATOR_IDS.split(',')
-  .map((s) => {
-    const n = Number(s.trim());
-    if (isNaN(n)) throw new AppError(`Invalid validator ID: ${s}`, 400);
-    return n;
-  });
+const VALIDATOR_IDS = process.env.VALIDATOR_IDS.split(',').map((s) => {
+  const n = Number(s.trim());
+  if (isNaN(n)) throw new AppError(`Invalid validator ID: ${s}`, 400);
+  return n;
+});
 if (VALIDATOR_IDS.length === 0) {
-  throw new AppError(`VALIDATOR_IDS list cannot be empty`, 400);
+  throw new AppError('VALIDATOR_IDS list cannot be empty', 400);
 }
 
 const QUORUM = Math.ceil(VALIDATOR_IDS.length / 2);
@@ -70,7 +107,7 @@ const AGG_INTERVAL = Number(process.env.PING_INTERVAL_MS) || 10_000;
 // KAFKA TOPIC
 const KAFKA_TOPIC = process.env.KAFKA_TOPIC;
 if (!KAFKA_TOPIC) {
-  throw new AppError(`KAFKA_TOPIC must be defined`, 500);
+  throw new AppError('KAFKA_TOPIC must be defined', 500);
 }
 
 // ALERT EMAILS
@@ -114,17 +151,11 @@ interface VoteEntry {
 const voteBuffer: Record<string, VoteEntry[]> = {};
 const VOTE_TTL_MS = 5 * 60 * 1000; // 5 minutes TTL
 
-// Cleanup old votes
 function cleanupOldVotes() {
   const now = Date.now();
   for (const key of Object.keys(voteBuffer)) {
     const entries = voteBuffer[key];
-    if (entries.length === 0) continue;
-
-    // Remove entries older than TTL
-    voteBuffer[key] = entries.filter(entry => now - entry.timestamp < VOTE_TTL_MS);
-    
-    // Remove empty buffers
+    voteBuffer[key] = entries.filter(e => now - e.timestamp < VOTE_TTL_MS);
     if (voteBuffer[key].length === 0) {
       delete voteBuffer[key];
     }
@@ -140,13 +171,11 @@ export async function startKafkaConsumer() {
   });
 
   const consumer = kafkaClient.consumer({ groupId: 'aggregator-group' });
-
   await consumer.connect();
   info('Aggregator connected to Kafka');
 
-  const topic = process.env.KAFKA_TOPIC!;
-  await consumer.subscribe({ topic, fromBeginning: false });
-  info(`Subscribed to ${topic} topic`);
+  await consumer.subscribe({ topic: KAFKA_TOPIC!, fromBeginning: false });
+  info(`Subscribed to ${KAFKA_TOPIC} topic`);
 
   await consumer.run({
     eachMessage: async ({ message }) => {
@@ -157,20 +186,15 @@ export async function startKafkaConsumer() {
           status: 'UP' | 'DOWN';
           latencyMs: number;
           timestamp: string;
-          location: string; // Added location
+          location: string;
         };
 
-        const timeBucket = payload.timestamp.slice(0, 16); // e.g., "2025-05-16T14:46"
+        const timeBucket = payload.timestamp.slice(0, 16);
         const key = `${payload.url}:${timeBucket}`;
-        
-        // Skip if already processed
-        if (processedConsensus.has(key)) {
-          return;
-        }
+
+        if (processedConsensus.has(key)) return;
 
         voteBuffer[key] = voteBuffer[key] || [];
-        
-        // Add vote to buffer with timestamp
         voteBuffer[key].push({
           validatorId: payload.validatorId,
           status: payload.status,
@@ -180,7 +204,6 @@ export async function startKafkaConsumer() {
           timestamp: Date.now()
         });
 
-        // Broadcast individual ping over WebSocket
         const individualPingMsg = JSON.stringify({
           type: 'individual-ping',
           url: payload.url,
@@ -190,15 +213,13 @@ export async function startKafkaConsumer() {
           location: payload.location,
           timestamp: payload.timestamp,
         });
-        wsServer.clients.forEach((c) => {
+        wsServer.clients.forEach(c => {
           if (c.readyState === c.OPEN) c.send(individualPingMsg);
         });
 
-        // Update metrics
         voteCounter.inc({ status: payload.status });
-        voteLatencyHistogram.observe(payload.latencyMs / 1000); // Convert to seconds
+        voteLatencyHistogram.observe(payload.latencyMs / 1000);
 
-        // Process quorum if we have enough votes
         if (voteBuffer[key].length >= VALIDATOR_IDS.length) {
           await processQuorum();
         }
@@ -209,122 +230,98 @@ export async function startKafkaConsumer() {
   });
 }
 
-// Start the Kafka consumer
-startKafkaConsumer().catch((err) => {
+startKafkaConsumer().catch(err => {
   logError(`Failed to start Kafka consumer: ${err}`);
   process.exit(1);
 });
 
 // GOSSIP ROUTE
-app.post(
-  '/api/simulate/gossip',
-  async (req: Request, res: Response) => {
-    const {
-      site,
-      vote,
-      fromId,
-      responseTime,
-      timeStamp,
-      location,
-    } = req.body as {
-      site: string;
-      vote: { status: "UP" | "DOWN"; weight: number };
-      fromId: number;
-      responseTime: number;
-      timeStamp: string;
-      location: string;
-    };
+app.post('/api/simulate/gossip', async (req: Request, res: Response) => {
+  const { site, vote, fromId, responseTime, timeStamp, location } = req.body as {
+    site: string;
+    vote: { status: 'UP' | 'DOWN'; weight: number };
+    fromId: number;
+    responseTime: number;
+    timeStamp: string;
+    location: string;
+  };
 
-    if (
-      typeof site !== 'string' ||
-      typeof fromId !== 'number' ||
-      typeof responseTime !== 'number' ||
-      typeof timeStamp !== 'string' ||
-      typeof location !== 'string' ||
-      !vote ||
-      (vote.status !== 'UP' && vote.status !== 'DOWN')
-    ) {
-      throw new AppError('Malformed gossip payload', 400);
-    }
-
-    const key = `${site}: ${timeStamp}`;
-    voteBuffer[key] = voteBuffer[key] || [];
-    voteBuffer[key].push({
-      validatorId: fromId,
-      status: vote.status,
-      weight: vote.weight,
-      responseTime,
-      location,
-      timestamp: Date.now()
-    });
-
-    info(`Received gossip from ${fromId}@${location} → ${site}: ${vote.status}`);
-    res.sendStatus(204);
+  if (
+    typeof site !== 'string' ||
+    typeof fromId !== 'number' ||
+    typeof responseTime !== 'number' ||
+    typeof timeStamp !== 'string' ||
+    typeof location !== 'string' ||
+    !vote ||
+    (vote.status !== 'UP' && vote.status !== 'DOWN')
+  ) {
+    throw new AppError('Malformed gossip payload', 400);
   }
-);
 
-// ── PROCESS QUORUM ──────────────────────────────────────────────────────────
+  const key = `${site}:${timeStamp}`;
+  voteBuffer[key] = voteBuffer[key] || [];
+  voteBuffer[key].push({
+    validatorId: fromId,
+    status: vote.status,
+    weight: vote.weight,
+    responseTime,
+    location,
+    timestamp: Date.now()
+  });
+
+  info(`Received gossip from ${fromId}@${location} → ${site}: ${vote.status}`);
+  res.sendStatus(204);
+});
+
 async function processQuorum() {
   const startTime = Date.now();
-  
+
   for (const key of Object.keys(voteBuffer)) {
     const entries = voteBuffer[key];
     if (entries.length < VALIDATOR_IDS.length) continue;
     const [site, timeBucket] = key.split(':');
-    const upCount = entries.filter((e) => e.status === 'UP').length;
-    const consensus: 'UP' | 'DOWN' =
-      upCount >= entries.length - upCount ? 'UP' : 'DOWN';
+    const upCount = entries.filter(e => e.status === 'UP').length;
+    const consensus: 'UP' | 'DOWN' = upCount >= entries.length - upCount ? 'UP' : 'DOWN';
 
-    // Skip if already processed
-    if (processedConsensus.has(key)) {
-      continue;
-    }
+    if (processedConsensus.has(key)) continue;
 
     info(`✔️ Consensus for ${site}@${timeBucket}: ${consensus} (${upCount}/${entries.length} UP)`);
-
-    // Update consensus metric
     consensusGauge.set({ url: site }, consensus === 'UP' ? 1 : 0);
 
-    // Upsert all unique validatorIds before logging
-    const uniqueValidatorIds = Array.from(new Set(entries.map(e => e.validatorId)));
-    for (const validatorId of uniqueValidatorIds) {
-      if (validatorId === 0) continue; // skip consensus row
+    const uniqueIds = Array.from(new Set(entries.map(e => e.validatorId)));
+    for (const id of uniqueIds) {
+      if (id === 0) continue;
       await prisma.validator.upsert({
-        where: { id: validatorId },
+        where: { id },
         update: {},
-        create: { id: validatorId, location: entries.find(e => e.validatorId === validatorId)?.location || 'unknown' },
+        create: { id, location: entries.find(e => e.validatorId === id)!.location }
       });
     }
-
-    // Upsert the consensus/aggregator row (id: 0)
     await prisma.validator.upsert({
       where: { id: 0 },
       update: {},
-      create: { id: 0, location: 'aggregator' },
+      create: { id: 0, location: 'aggregator' }
     });
 
-    // a) Persist raw votes + consensus
     await prisma.validatorLog.createMany({
-      data: entries.map((e) => ({
+      data: entries.map(e => ({
         validatorId: e.validatorId,
         site,
         status: e.status,
         latency: e.responseTime,
-        timestamp: new Date(timeBucket+':00'),
-      })),
+        timestamp: new Date(timeBucket + ':00')
+      }))
     });
-
     await prisma.validatorLog.create({
       data: {
         validatorId: 0,
         site,
         status: consensus,
         latency: 0,
-        timestamp: new Date(timeBucket+':00'),
-      },
+        timestamp: new Date(timeBucket + ':00')
+      }
     });
 
-    // b) Broadcast WS (no names)
     const payload = {
       url: site,
       consensus,
@@ -335,33 +332,28 @@ async function processQuorum() {
         location: e.location,
         validatorId: e.validatorId
       })),
-      timeStamp: timeBucket+':00',
+      timeStamp: timeBucket + ':00',
       upCount,
       totalVotes: entries.length,
       quorum: QUORUM,
       processingTime: (Date.now() - startTime) / 1000
     };
-    const msg = JSON.stringify(payload);
-    wsServer.clients.forEach((c) => {
+    const msg = JSON.stringify({ type: 'consensus', ...payload });
+    wsServer.clients.forEach(c => {
       if (c.readyState === c.OPEN) {
-        try {
-          c.send(msg);
-        } catch (err) {
-          logError(`Failed to send WS message: ${(err as Error).message}`);
-        }
+        try { c.send(msg); }
+        catch (err) { logError(`Failed WS send: ${(err as Error).message}`); }
       }
     });
 
-    // c) Publish to Kafka
     try {
       await sendToTopic(KAFKA_TOPIC!, payload);
     } catch (e) {
       logError(`Kafka publish failed: ${(e as Error).message}`);
     }
 
-    // d) Send DOWN alerts per region
     if (consensus === 'DOWN') {
-      for (const e of entries.filter((e) => e.status === 'DOWN')) {
+      for (const e of entries.filter(e => e.status === 'DOWN')) {
         const to = ALERT_EMAILS[e.location];
         if (!to) continue;
         try {
@@ -369,7 +361,7 @@ async function processQuorum() {
             from: process.env.ALERT_FROM!,
             to,
             subject: `ALERT: ${site} DOWN in ${e.location}`,
-            text: `Validator ${e.validatorId}@${e.location} reported DOWN at ${timeBucket}:00.`,
+            text: `Validator ${e.validatorId}@${e.location} reported DOWN at ${timeBucket}:00.`
           });
           info(`✉️ Alert sent to ${to}`);
         } catch (mailErr) {
@@ -378,22 +370,17 @@ async function processQuorum() {
       }
     }
 
-    // Mark as processed and cleanup
     processedConsensus.add(key);
     delete voteBuffer[key];
-
-    // Record processing latency
-    const processingTime = (Date.now() - startTime) / 1000; // Convert to seconds
-    voteLatencyHistogram.observe({ url: site }, processingTime);
+    voteLatencyHistogram.observe({ url: site }, (Date.now() - startTime) / 1000);
   }
 }
 
-// Regular cleanup of old votes
-setInterval(cleanupOldVotes, 60 * 1000); // Run cleanup every minute
-
-// Regular quorum processing
+setInterval(cleanupOldVotes, 60 * 1000);
 setInterval(() => {
-  processQuorum().catch((e) =>
+  processQuorum().catch(e =>
     logError(`processQuorum crashed: ${(e as Error).message}`)
   );
 }, AGG_INTERVAL);
+
+startServer(SERVER_PORT);

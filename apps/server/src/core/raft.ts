@@ -74,7 +74,19 @@ export class RaftNode {
     public peers: string[],        
     private applyCallback: (cmd: any) => void
   ) {
-    info(`Node ${this.id} starting as Follower`);
+    if (typeof id !== 'number' || isNaN(id)) {
+      throw new Error(`Invalid node ID: ${id}`);
+    }
+    
+    // Validate peers format
+    this.peers = peers.map(peer => {
+      if (!peer.includes(':')) {
+        throw new Error(`Invalid peer format: ${peer}. Expected host:port`);
+      }
+      return peer;
+    });
+
+    info(`Node ${this.id} starting as Follower with ${this.peers.length} peers`);
     this.resetElectionTimeout();
   }
 

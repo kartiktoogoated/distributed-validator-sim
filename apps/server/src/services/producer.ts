@@ -43,20 +43,45 @@ export async function startKafkaProducer(): Promise<void> {
 
 // ——— Internal helper to send JSON to a topic —————————
 export async function sendToTopic<T>(topic: string, payload: T): Promise<void> {
-  try {
-    await kafkaProducer.send({
-      topic,
-      messages: [
-        {
-          key: String(
-            (payload as any).validatorId ?? (payload as any).userId
-          ),
-          value: JSON.stringify(payload),
-        },
-      ],
-    });
-  } catch (err) {
-    throw err;
+  let attempts = 0;
+  const maxAttempts = 2;
+  while (attempts < maxAttempts) {
+    try {
+      // Ensure producer is connected
+      if (!kafkaProducer) {
+        throw new Error("Kafka producer not initialized");
+      }
+      
+      await kafkaProducer.send({
+        topic,
+        messages: [
+          {
+            key: String(
+              (payload as any).validatorId ?? (payload as any).userId
+            ),
+            value: JSON.stringify(payload),
+          },
+        ],
+      });
+      return;
+    } catch (err: any) {
+      attempts++;
+      logError(`Kafka publish failed (attempt ${attempts}): ${err.message || err}`);
+      if (attempts >= maxAttempts) {
+        throw err;
+      }
+      // Try to reconnect before retrying
+      try {
+        await kafkaProducer.disconnect();
+      } catch {}
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      try {
+        await kafkaProducer.connect();
+        info("Kafka producer reconnected for retry.");
+      } catch (connErr) {
+        logError(`Kafka reconnect failed: ${connErr instanceof Error ? connErr.message : String(connErr)}`);
+      }
+    }
   }
 }
 
