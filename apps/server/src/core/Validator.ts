@@ -3,6 +3,7 @@ import * as dns from "dns";
 import { promisify } from "util";
 import { info, warn, error as logError } from "../../utils/logger";
 import { sendToTopic } from "../services/producer";
+import { timeStamp } from "console";
 
 export type Status = "UP" | "DOWN";
 export interface Vote {
@@ -22,6 +23,7 @@ export interface GossipPayload {
 // ── simple in-process DNS cache ───────────────────────────────────────────────
 const lookup = promisify(dns.lookup);
 const dnsCache = new Map<string, { address: string; family: number }>();
+const skipFirstPingForSite = new Set<string>();
 
 async function cachedLookup(hostname: string) {
   const cached = dnsCache.get(hostname);
@@ -56,46 +58,56 @@ export class Validator {
   /**
    * ICMP-ping (no TCP/TLS), with cached DNS.
    */
+  
   public async checkWebsite(siteUrl: string): Promise<Vote> {
     const { hostname } = new URL(siteUrl);
-    const start = Date.now();
 
-    let status: Status = "DOWN";
+    // Always resolve DNS before timing
+    let address: string;
     try {
-      const { address } = await cachedLookup(hostname);
-      // ping once with a 3 s timeout
+      const dnsResult = await cachedLookup(hostname);
+      address = dnsResult.address;
+    } catch (err: any) {
+      logError(`DNS lookup failed for ${hostname}: ${(err as Error).message}`);
+      return { status: "DOWN", weight: 1};
+    }
+
+    const start = Date.now();
+    let status: Status = 'DOWN';
+    let latency = 0;
+
+    try {
       const res = await ping.promise.probe(address, { timeout: 3 });
       status = res.alive ? "UP" : "DOWN";
-
-      if (!res.alive) {
-        warn(`Ping responded DOWN for ${siteUrl}`);
-      }
-    } catch (err) {
-      logError(`checkWebsite error for ${siteUrl}: ${(err as Error).message}`);
-      status = "DOWN";
+      if (!res.alive) warn (`Ping responded DOWN for ${siteUrl}`);
+      else latency = Date.now() - start;
+    } catch (err: any) {
+      logError(`Ping error for ${siteUrl}: ${(err as Error).message}`);
     }
 
-    let latency = 0;
-    if (status === "UP") {
-      latency = Date.now() - start;
-    }
-
-    const vote: Vote = { status, weight: 1 };
+    const vote: Vote = { status, weight: 1};
     this.lastVotes.set(siteUrl, vote);
 
-    // Send status to Kafka with location
-    try {
+    // SKIP FIRST PING FOR THIS SITE ( EVEN UP , BECUASE IT INCLUDES DNS LOOKUP
+    if (!skipFirstPingForSite.has(siteUrl)) {
+      skipFirstPingForSite.add(siteUrl);
+      info(`First ping for ${siteUrl} skipped (DNS warm-up)`);
+      return vote;
+    }
+
+    // Send to kafka now that its the second ping and later
+    try{
       await sendToTopic("validator-logs", {
         validatorId: this.id,
         url: siteUrl,
         status,
         latencyMs: latency,
         timestamp: new Date().toISOString(),
-        location: this.location
+        location: this.location,
       });
-      info(`📡 Validator ${this.id}@${this.location} pinged ${siteUrl}: ${status} (icmp ${latency} ms) and sent to Kafka`);
-    } catch (err) {
-      logError(`Failed to send to Kafka: ${(err as Error).message}`);
+      info (`${this.id}@${this.location} pinged ${siteUrl}: ${status} (${latency}ms)`);
+    } catch (err: any) {
+      logError(`Failed to send to kafka: ${(err as Error).message}`);
     }
 
     return vote;

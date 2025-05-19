@@ -41,10 +41,9 @@ interface LogEntry {
 const POLL_INTERVAL_MS = 60_000
 
 const ValidatorDashboard: React.FC = () => {
-  const [isStarted, setIsStarted] = useState(
-    () => localStorage.getItem('validatorStarted') === 'true'
-  )
+  const [isStarted, setIsStarted] = useState(false)
   const { toast } = useToast()
+  const skipFirstToggle = useRef(true)
 
   const [dashboardData, setDashboardData] = useState<DashboardData>({
     uptime: 0,
@@ -56,9 +55,7 @@ const ValidatorDashboard: React.FC = () => {
   const totalMessages = useRef(0)
   const totalUpPercent = useRef(0)
 
-  //
-  // 1) Seed initial round from GET /api/simulate
-  //
+  // 1) Manual trigger simulation ping
   useEffect(() => {
     if (!isStarted) return
     fetch('/api/simulate')
@@ -93,9 +90,7 @@ const ValidatorDashboard: React.FC = () => {
       .catch((err) => console.error('Initial simulate fetch failed', err))
   }, [isStarted])
 
-  //
-  // 2) Poll `/api/logs` every minute to update pingCount, uptime, lastPing
-  //
+  // 2) Poll logs for uptime + ping count
   const fetchLogs = async () => {
     try {
       const res = await fetch('/api/logs')
@@ -126,9 +121,7 @@ const ValidatorDashboard: React.FC = () => {
     return () => clearInterval(id)
   }, [])
 
-  //
-  // 3) Open WebSocket once for live performance updates
-  //
+  // 3) WS setup for real-time performance updates
   useEffect(() => {
     const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
     const ws = new WebSocket(`${proto}://${window.location.host}/api/ws`)
@@ -158,10 +151,13 @@ const ValidatorDashboard: React.FC = () => {
     return () => ws.close()
   }, [])
 
-  //
-  // 4) Start / Stop single-validator on toggle
-  //
+  // 4) Send start/stop command only after first render
   useEffect(() => {
+    if (skipFirstToggle.current) {
+      skipFirstToggle.current = false
+      return
+    }
+
     const path = isStarted ? '/api/simulate/start' : '/api/simulate/stop'
     fetch(path, { method: 'POST' }).catch((err) => {
       console.error(`Failed to ${isStarted ? 'start' : 'stop'} validator`, err)
@@ -170,11 +166,8 @@ const ValidatorDashboard: React.FC = () => {
         description: err.message,
         variant: 'destructive',
       })
-      // rollback
       setIsStarted((prev) => !prev)
-      localStorage.setItem('validatorStarted', String(!isStarted))
     })
-    localStorage.setItem('validatorStarted', String(isStarted))
   }, [isStarted, toast])
 
   const toggleValidator = () => {
@@ -188,7 +181,6 @@ const ValidatorDashboard: React.FC = () => {
           path="/"
           element={
             <div className="max-w-[1600px] mx-auto space-y-6">
-              {/* Header */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <h1 className="text-3xl font-bold tracking-tight">
@@ -199,10 +191,7 @@ const ValidatorDashboard: React.FC = () => {
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  <Button
-                    onClick={fetchLogs}
-                    variant="outline"
-                  >
+                  <Button onClick={fetchLogs} variant="outline">
                     Reload
                   </Button>
                   <Button
@@ -218,9 +207,8 @@ const ValidatorDashboard: React.FC = () => {
                 </div>
               </div>
 
-              {/* Summary Cards */}
+              {/* Summary */}
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                {/* Status */}
                 <Card>
                   <CardHeader className="flex justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Status</CardTitle>
@@ -245,7 +233,6 @@ const ValidatorDashboard: React.FC = () => {
                   </CardContent>
                 </Card>
 
-                {/* Uptime */}
                 <Card>
                   <CardHeader className="flex justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Uptime</CardTitle>
@@ -265,7 +252,6 @@ const ValidatorDashboard: React.FC = () => {
                   </CardContent>
                 </Card>
 
-                {/* Earnings */}
                 <Card className="relative overflow-hidden">
                   <div className="absolute -right-4 -top-4 bg-primary text-white py-1 px-3 rotate-45 text-xs font-semibold">
                     Coming Soon
@@ -286,7 +272,6 @@ const ValidatorDashboard: React.FC = () => {
                   </CardContent>
                 </Card>
 
-                {/* Pings */}
                 <Card>
                   <CardHeader className="flex justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Pings</CardTitle>
@@ -304,7 +289,6 @@ const ValidatorDashboard: React.FC = () => {
                 </Card>
               </div>
 
-              {/* Tabs */}
               <Tabs defaultValue="performance" className="space-y-4">
                 <TabsList>
                   <TabsTrigger value="performance">Performance</TabsTrigger>
