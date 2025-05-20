@@ -3,7 +3,6 @@ import * as dns from "dns";
 import { promisify } from "util";
 import { info, warn, error as logError } from "../../utils/logger";
 import { sendToTopic } from "../services/producer";
-import { timeStamp } from "console";
 
 export type Status = "UP" | "DOWN";
 export interface Vote {
@@ -20,7 +19,7 @@ export interface GossipPayload {
   location: string;
 }
 
-// ── simple in-process DNS cache ───────────────────────────────────────────────
+// ── DNS Cache ─────────────────────────────────────
 const lookup = promisify(dns.lookup);
 const dnsCache = new Map<string, { address: string; family: number }>();
 const skipFirstPingForSite = new Set<string>();
@@ -32,9 +31,8 @@ async function cachedLookup(hostname: string) {
     return cached;
   }
 
-  let result;
   try {
-    result = await lookup(hostname, { family: 0, verbatim: true });
+    const result = await lookup(hostname, { family: 0, verbatim: true });
     dnsCache.set(hostname, result);
     info(`DNS cache miss: resolved ${hostname} -> ${result.address}`);
     return result;
@@ -44,6 +42,7 @@ async function cachedLookup(hostname: string) {
   }
 }
 
+// ── Validator Class ───────────────────────────────
 export class Validator {
   public readonly id: number;
   public peers: string[] = [];
@@ -56,47 +55,43 @@ export class Validator {
   }
 
   /**
-   * ICMP-ping (no TCP/TLS), with cached DNS.
+   * ICMP-ping with DNS caching. Skips first latency-inflated result.
    */
-  
   public async checkWebsite(siteUrl: string): Promise<Vote> {
     const { hostname } = new URL(siteUrl);
-
-    // Always resolve DNS before timing
     let address: string;
+
     try {
       const dnsResult = await cachedLookup(hostname);
       address = dnsResult.address;
-    } catch (err: any) {
-      logError(`DNS lookup failed for ${hostname}: ${(err as Error).message}`);
-      return { status: "DOWN", weight: 1};
+    } catch (err) {
+      return { status: "DOWN", weight: 1 };
     }
 
     const start = Date.now();
-    let status: Status = 'DOWN';
+    let status: Status = "DOWN";
     let latency = 0;
 
     try {
       const res = await ping.promise.probe(address, { timeout: 3 });
       status = res.alive ? "UP" : "DOWN";
-      if (!res.alive) warn (`Ping responded DOWN for ${siteUrl}`);
-      else latency = Date.now() - start;
-    } catch (err: any) {
+      if (status === "UP") latency = Date.now() - start;
+      else warn(`Ping responded DOWN for ${siteUrl}`);
+    } catch (err) {
       logError(`Ping error for ${siteUrl}: ${(err as Error).message}`);
     }
 
-    const vote: Vote = { status, weight: 1};
+    const vote: Vote = { status, weight: 1 };
     this.lastVotes.set(siteUrl, vote);
 
-    // SKIP FIRST PING FOR THIS SITE ( EVEN UP , BECUASE IT INCLUDES DNS LOOKUP
+    // 🚫 Skip the first ping due to DNS warm-up latency
     if (!skipFirstPingForSite.has(siteUrl)) {
       skipFirstPingForSite.add(siteUrl);
-      info(`First ping for ${siteUrl} skipped (DNS warm-up)`);
+      info(`Skipped first ping result for ${siteUrl} (DNS warm-up)`);
       return vote;
     }
 
-    // Send to kafka now that its the second ping and later
-    try{
+    try {
       await sendToTopic("validator-logs", {
         validatorId: this.id,
         url: siteUrl,
@@ -105,16 +100,16 @@ export class Validator {
         timestamp: new Date().toISOString(),
         location: this.location,
       });
-      info (`${this.id}@${this.location} pinged ${siteUrl}: ${status} (${latency}ms)`);
-    } catch (err: any) {
-      logError(`Failed to send to kafka: ${(err as Error).message}`);
+      info(`📡 ${this.id}@${this.location} pinged ${siteUrl}: ${status} (${latency}ms)`);
+    } catch (err) {
+      logError(`Failed to send to Kafka: ${(err as Error).message}`);
     }
 
     return vote;
   }
 
   /**
-   * Fire off your last vote to all peers immediately—no jitter, 1 round only.
+   * Broadcast vote via HTTP POST to peers.
    */
   public gossip(
     siteUrl: string,
@@ -143,7 +138,6 @@ export class Validator {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
-        // you can polyfill fetch or use node-fetch
       })
         .then(() => info(`🔗 Validator ${this.id} → ${peer}: ${vote.status}`))
         .catch((err) =>
@@ -154,9 +148,7 @@ export class Validator {
 
   public receiveGossip(siteUrl: string, vote: Vote, from: number): void {
     this.lastVotes.set(siteUrl, vote);
-    info(
-      `🔄 Validator ${this.id} got gossip from ${from} for ${siteUrl}: ${vote.status}`
-    );
+    info(`🔄 Validator ${this.id} got gossip from ${from} for ${siteUrl}: ${vote.status}`);
   }
 
   public getStatus(siteUrl: string): Vote | undefined {
