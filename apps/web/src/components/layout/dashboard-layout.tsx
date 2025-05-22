@@ -290,7 +290,7 @@ export default function DashboardLayout({
           <Menu className="h-6 w-6" />
         </Button>
       )}
-      <span className="font-bold text-lg">Validator Dashboard</span>
+      <span className="font-bold text-lg">Dashboard</span>
       <div className="ml-auto flex items-center gap-2">
         <ThemeToggle />
         <NotificationsMenu />

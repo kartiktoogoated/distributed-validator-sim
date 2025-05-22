@@ -1,6 +1,6 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, Suspense, lazy } from 'react'
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
 import DashboardLayout from '@/components/layout/dashboard-layout'
 import {
@@ -15,16 +15,28 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import SitesList from '@/components/clients/sites-list'
-import AddSiteDialog, { Website as NewWebsite } from '@/components/clients/add-site-dialog'
-import ValidatorSelection from '@/components/clients/validator-selection'
-import UptimeChart from '@/components/clients/uptime-chart'
-import ResponseTimeChart from '@/components/clients/response-time-chart'
-import ClientMap from '@/components/clients/client-map'
-import ClientSettings from '@/components/clients/client-settings'
 import { useToast } from '@/hooks/use-toast'
-import { Plus, Globe, Activity, Clock, Zap, ExternalLink } from 'lucide-react'
+import { Plus, Globe, Activity, Clock, Zap, ExternalLink, Loader2 } from 'lucide-react'
 import { comingSoon } from '@/lib/utils'
+
+// Lazy load components
+const SitesList = lazy(() => import('@/components/clients/sites-list'))
+const AddSiteDialog = lazy(() => import('@/components/clients/add-site-dialog'))
+const ValidatorSelection = lazy(() => import('@/components/clients/validator-selection'))
+const UptimeChart = lazy(() => import('@/components/clients/uptime-chart'))
+const ResponseTimeChart = lazy(() => import('@/components/clients/response-time-chart'))
+const ClientMap = lazy(() => import('@/components/clients/client-map'))
+const ClientSettings = lazy(() => import('@/components/clients/client-settings'))
+
+// Import type
+import type { Website as NewWebsite } from '@/components/clients/add-site-dialog'
+
+// Loading component
+const LoadingSpinner = () => (
+  <div className="h-32 w-full flex items-center justify-center">
+    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+  </div>
+)
 
 interface WebsiteSummary {
   id: number
@@ -228,12 +240,14 @@ const ClientDashboard: React.FC = () => {
                     </div>
                   </CardHeader>
                   <CardContent className="p-0">
-                    <SitesList
-                      sites={filteredSites}
-                      onSelect={setSelectedSiteId}
-                      selectedSite={selectedSiteId}
-                      onDelete={loadSites}
-                    />
+                    <Suspense fallback={<LoadingSpinner />}>
+                      <SitesList
+                        sites={filteredSites}
+                        onSelect={setSelectedSiteId}
+                        selectedSite={selectedSiteId}
+                        onDelete={loadSites}
+                      />
+                    </Suspense>
                   </CardContent>
                   <CardFooter className="border-t p-4">
                     <Button variant="outline" onClick={() => setShowAddSite(true)}>
@@ -285,16 +299,22 @@ const ClientDashboard: React.FC = () => {
                           <TabsTrigger value="locations">Validators</TabsTrigger>
                         </TabsList>
                         <TabsContent value="uptime">
-                          <UptimeChart siteId={selectedSite.id} />
+                          <Suspense fallback={<LoadingSpinner />}>
+                            <UptimeChart siteId={selectedSite.id} />
+                          </Suspense>
                         </TabsContent>
                         <TabsContent value="performance">
-                          <ResponseTimeChart
-                            siteId={selectedSite.id}
-                            siteUrl={selectedSite.url}
-                          />
+                          <Suspense fallback={<LoadingSpinner />}>
+                            <ResponseTimeChart
+                              siteId={selectedSite.id}
+                              siteUrl={selectedSite.url}
+                            />
+                          </Suspense>
                         </TabsContent>
                         <TabsContent value="locations">
-                          <ClientMap />
+                          <Suspense fallback={<LoadingSpinner />}>
+                            <ClientMap />
+                          </Suspense>
                         </TabsContent>
                       </Tabs>
                     ) : (
@@ -317,20 +337,30 @@ const ClientDashboard: React.FC = () => {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <ValidatorSelection />
+                  <Suspense fallback={<LoadingSpinner />}>
+                    <ValidatorSelection />
+                  </Suspense>
                 </CardContent>
               </Card>
 
-              <AddSiteDialog
-                open={showAddSite}
-                onOpenChange={setShowAddSite}
-                onAdd={addNewSite}
-              />
+              <Suspense fallback={<LoadingSpinner />}>
+                <AddSiteDialog
+                  open={showAddSite}
+                  onOpenChange={setShowAddSite}
+                  onAdd={addNewSite}
+                />
+              </Suspense>
             </div>
           }
         />
-        {/* ← here is your new settings route */}
-        <Route path="/settings" element={<ClientSettings />} />
+        <Route 
+          path="/settings" 
+          element={
+            <Suspense fallback={<LoadingSpinner />}>
+              <ClientSettings />
+            </Suspense>
+          } 
+        />
       </Routes>
     </DashboardLayout>
   )
