@@ -8,34 +8,24 @@ import prisma from "../../../prismaClient";
 import { Validator, Status, GossipPayload } from "../../../core/Validator";
 import { GossipManager } from "../../../core/GossipManager";
 import { RaftNode } from "../../../core/raft";
-
-// Prometheus metrics
 import { latencyHistogram, statusCounter } from "../../../metrics";
 
 const GOSSIP_ROUNDS = 1;
 const PING_INTERVAL_MS = Number(process.env.PING_INTERVAL_MS) || 60_000;
 
-// parse peers from env
 const peerAddresses = (process.env.PEERS ?? "")
   .split(",")
-  .map((h) =>
-    h
-      .trim()
-      .replace(/^https?:\/\//, "")
-      .replace(/\/+$/, "")
-  )
+  .map((h) => h.trim().replace(/^https?:\/\//, "").replace(/\/+$/, ""))
   .filter(Boolean);
 
-// local validator ID & region
 const localValidatorId = Number(process.env.VALIDATOR_ID);
-if (isNaN(localValidatorId)) {
-  throw new Error("VALIDATOR_ID must be a number");
-}
+if (isNaN(localValidatorId)) throw new Error("VALIDATOR_ID must be a number");
+
 const localLocation = process.env.LOCATION || "unknown";
 
-// single Validator instance + Raft node
 const validatorInstance = new Validator(localValidatorId);
 validatorInstance.peers = peerAddresses;
+
 const raftNode = new RaftNode(localValidatorId, peerAddresses, (committed) => {
   info(`Raft committed: ${JSON.stringify(committed)}`);
 });
@@ -49,7 +39,6 @@ export default function createSimulationRouter(
   let isLoopRunning = false;
   let loopInterval: NodeJS.Timeout | null = null;
 
-  // start the continuous validation loop
   function startValidationLoop() {
     if (isLoopRunning) return;
     isLoopRunning = true;
@@ -70,42 +59,31 @@ export default function createSimulationRouter(
     }, PING_INTERVAL_MS);
   }
 
-  // stop the continuous validation loop
   function stopValidationLoop() {
     if (!isLoopRunning) return;
-    if (loopInterval) {
-      clearInterval(loopInterval);
-      loopInterval = null;
-    }
+    if (loopInterval) clearInterval(loopInterval);
     isLoopRunning = false;
     info(`🔴 Simulation loop stopped for Validator ${localValidatorId}`);
   }
 
-  // 1) Ingest gossip (unchanged)
-  SimulationRouter.post(
-    "/gossip",
-    async (req: Request<{}, any, GossipPayload>, res) => {
-      /* … your existing gossip handler … */
-    }
-  );
+  SimulationRouter.post("/gossip", async (req: Request<{}, any, GossipPayload>, res) => {
+    // TODO: Add your gossip handler if needed
+    res.sendStatus(204);
+  });
 
-  // 2) Start the loop on demand
   SimulationRouter.post("/start", (_req, res) => {
     startValidationLoop();
     res.json({ success: true, message: "Validation loop started" });
   });
 
-  // 3) Stop the loop on demand
   SimulationRouter.post("/stop", (_req, res) => {
     stopValidationLoop();
     res.json({ success: true, message: "Validation loop stopped" });
   });
 
-  // 4) GET /api/simulation – one-off + ensure loop is running
-  SimulationRouter.get("/", async (req: Request, res: Response, next) => {
+  SimulationRouter.get("/", async (_req: Request, res: Response, next) => {
     try {
       startValidationLoop();
-
       const sites = await prisma.website.findMany({ where: { paused: false } });
       const payloads = await Promise.all(
         sites.map((w) => executeRoundForUrl(wsServer, w.url))
@@ -120,7 +98,6 @@ export default function createSimulationRouter(
   return SimulationRouter;
 }
 
-// 5) perform ping→gossip→(Raft & WebSocket) for *one* URL
 async function executeRoundForUrl(
   wsServer: WebSocketServer,
   url: string
@@ -130,29 +107,26 @@ async function executeRoundForUrl(
   votes: Array<{ validatorId: number; status: Status; weight: number }>;
   timeStamp: string;
 }> {
-  // — a) ping + log
-  let vote: { status: Status; weight: number };
-  let latency: number;
+  let voteResult: { vote: { status: Status; weight: number }; latency: number };
   let timeStamp: string;
-  try {
-    const start = Date.now();
-    vote = await validatorInstance.checkWebsite(url);
-    latency = Date.now() - start;
-    timeStamp = new Date().toISOString();
-    info(
-      `[Ping] Validator ${localValidatorId}@${localLocation}` +
-        ` → ${url}: ${vote.status} (${latency}ms)`
-    );
 
-    // ** Prometheus instrumentation **
-    latencyHistogram.observe(latency);
-    statusCounter.labels(vote.status).inc();
+  try {
+    voteResult = await validatorInstance.checkWebsite(url);
+    timeStamp = new Date().toISOString();
+
+    info(`[Ping] Validator ${localValidatorId}@${localLocation} → ${url}: ${voteResult.vote.status} (${voteResult.latency}ms)`);
+
+    // ✅ Only observe valid numbers
+    if (typeof voteResult.latency === "number" && !isNaN(voteResult.latency)) {
+      latencyHistogram.observe(voteResult.latency);
+    }
+
+    statusCounter.labels(voteResult.vote.status).inc();
   } catch (err: any) {
     logError(`Ping error for ${url}: ${err.stack || err}`);
     throw err;
   }
 
-  // — b) upsert validator row
   try {
     await prisma.validator.upsert({
       where: { id: localValidatorId },
@@ -163,38 +137,29 @@ async function executeRoundForUrl(
     logError(`DB upsert validator error: ${err.stack || err}`);
   }
 
-  // — c) store raw ping
   try {
-    await prisma.validatorLog.create({
-      data: {
-        validatorId: localValidatorId,
-        site: url,
-        status: vote.status,
-        latency,
-        timestamp: new Date(timeStamp),
-      },
-    });
-  } catch (err: any) {
-    logError(`DB create validatorLog error: ${err.stack || err}`);
-  }
-
-  // — d) gossip
-  try {
-    await new GossipManager([validatorInstance], GOSSIP_ROUNDS, localLocation)
-      .runGossipRounds(url, latency, timeStamp);
+    await new GossipManager([validatorInstance], GOSSIP_ROUNDS, localLocation).runGossipRounds(
+      url,
+      voteResult.latency,
+      timeStamp
+    );
   } catch (err: any) {
     logError(`GossipManager error for ${url}: ${err.stack || err}`);
   }
 
-  // — e) build payload
   const payload = {
     url,
-    consensus: vote.status,
-    votes: [{ validatorId: localValidatorId, status: vote.status, weight: vote.weight }],
+    consensus: voteResult.vote.status,
+    votes: [
+      {
+        validatorId: localValidatorId,
+        status: voteResult.vote.status,
+        weight: voteResult.vote.weight,
+      },
+    ],
     timeStamp,
   };
 
-  // — f) propose via Raft
   try {
     raftNode.propose(payload);
     info(`Raft propose successful for ${url}`);
@@ -202,7 +167,6 @@ async function executeRoundForUrl(
     info("Not Raft leader—skipping propose");
   }
 
-  // — g) broadcast over WebSocket
   try {
     const msg = JSON.stringify(payload);
     wsServer.clients.forEach((c) => {

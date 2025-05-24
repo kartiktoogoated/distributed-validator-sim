@@ -107,9 +107,9 @@ interface VoteEntry {
   validatorId: number;
   status: 'UP' | 'DOWN';
   weight: number;
-  responseTime: number;
+  latencyMs: number;  
   location: string;
-  timestamp: number; // Added timestamp for TTL
+  timestamp: number;
 }
 
 const voteBuffer: Record<string, VoteEntry[]> = {};
@@ -168,17 +168,16 @@ async function startKafkaConsumer() {
         }
 
         voteBuffer[key] = voteBuffer[key] || [];
-        
-        // Add vote to buffer with timestamp
+
         voteBuffer[key].push({
           validatorId: payload.validatorId,
           status: payload.status,
           weight: 1,
-          responseTime: payload.latencyMs,
+          latencyMs: payload.latencyMs,
           location: payload.location,
           timestamp: Date.now()
-        });
-
+        });        
+        
         // Update metrics
         voteCounter.inc({ status: payload.status });
         voteLatencyHistogram.observe(payload.latencyMs / 1000); // Convert to seconds
@@ -201,52 +200,51 @@ startKafkaConsumer().catch((err) => {
 });
 
 // GOSSIP ROUTE
-app.post(
-  '/api/simulate/gossip',
-  async (req: Request, res: Response) => {
-    const {
-      site,
-      vote,
-      fromId,
-      responseTime,
-      timeStamp,
-      location,
-    } = req.body as {
-      site: string;
-      vote: { status: "UP" | "DOWN"; weight: number };
-      fromId: number;
-      responseTime: number;
-      timeStamp: string;
-      location: string;
-    };
+app.post('/api/simulate/gossip', async (req: Request, res: Response) => {
+  const {
+    site,
+    vote,
+    fromId,
+    latencyMs,
+    timeStamp,
+    location,
+  } = req.body as {
+    site: string;
+    vote: { status: "UP" | "DOWN"; weight: number };
+    fromId: number;
+    latencyMs: number;
+    timeStamp: string;
+    location: string;
+  };
 
-    if (
-      typeof site !== 'string' ||
-      typeof fromId !== 'number' ||
-      typeof responseTime !== 'number' ||
-      typeof timeStamp !== 'string' ||
-      typeof location !== 'string' ||
-      !vote ||
-      (vote.status !== 'UP' && vote.status !== 'DOWN')
-    ) {
-      throw new AppError('Malformed gossip payload', 400);
-    }
-
-    const key = `${site}: ${timeStamp}`;
-    voteBuffer[key] = voteBuffer[key] || [];
-    voteBuffer[key].push({
-      validatorId: fromId,
-      status: vote.status,
-      weight: vote.weight,
-      responseTime,
-      location,
-      timestamp: Date.now()
-    });
-
-    info(`Received gossip from ${fromId}@${location} → ${site}: ${vote.status}`);
-    res.sendStatus(204);
+  if (
+    typeof site !== 'string' ||
+    typeof fromId !== 'number' ||
+    typeof latencyMs !== 'number' ||
+    typeof timeStamp !== 'string' ||
+    typeof location !== 'string' ||
+    !vote ||
+    (vote.status !== 'UP' && vote.status !== 'DOWN')
+  ) {
+    throw new AppError('Malformed gossip payload', 400);
   }
-);
+
+  const key = `${site}:${timeStamp}`;
+  voteBuffer[key] = voteBuffer[key] || [];
+
+  voteBuffer[key].push({
+    validatorId: fromId,
+    status: vote.status,
+    weight: vote.weight,
+    latencyMs,
+    location,
+    timestamp: Date.now()
+  });
+
+  info(`Received gossip from ${fromId}@${location} → ${site}: ${vote.status}`);
+  res.sendStatus(204);
+});
+
 
 // ── PROCESS QUORUM ──────────────────────────────────────────────────────────
 async function processQuorum() {
@@ -277,11 +275,11 @@ async function processQuorum() {
         validatorId: e.validatorId,
         site,
         status: e.status,
-        latency: e.responseTime,
+        latency: e.latencyMs ?? 0,  
         timestamp: new Date(timeStamp),
       })),
     });
-
+    
     await prisma.validatorLog.create({
       data: {
         validatorId: 0,

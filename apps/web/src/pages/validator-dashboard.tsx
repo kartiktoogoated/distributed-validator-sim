@@ -44,6 +44,10 @@ const ValidatorDashboard: React.FC = () => {
   const [isStarted, setIsStarted] = useState(false)
   const { toast } = useToast()
   const skipFirstToggle = useRef(true)
+  const wsRef = useRef<WebSocket | null>(null)
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const isMounted = useRef(true)
 
   const [dashboardData, setDashboardData] = useState<DashboardData>({
     uptime: 0,
@@ -55,45 +59,91 @@ const ValidatorDashboard: React.FC = () => {
   const totalMessages = useRef(0)
   const totalUpPercent = useRef(0)
 
-  // 1) Manual trigger simulation ping
-  useEffect(() => {
-    if (!isStarted) return
-    fetch('/api/simulate')
-      .then((r) => r.json())
-      .then(({ payloads }: any) => {
-        if (!Array.isArray(payloads)) return
-        const count = payloads.length
-        const upCount = payloads.filter((p: any) => p.consensus === 'UP').length
-        const uptime = count ? Math.round((upCount / count) * 100) : 0
-        const last = payloads[payloads.length - 1]
-        const lastPing = last?.timeStamp || ''
-        const perf =
-          last && Array.isArray(last.votes)
-            ? Math.round(
-                (last.votes.filter((v: any) => v.status === 'UP').length /
-                  last.votes.length) *
-                  100
-              )
-            : 0
+  // Cleanup function for all resources
+  const cleanup = () => {
+    if (wsRef.current) {
+      wsRef.current.close()
+      wsRef.current = null
+    }
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current)
+      pollingIntervalRef.current = null
+    }
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current)
+      reconnectTimeoutRef.current = null
+    }
+  }
 
-        // reset WS counters
-        totalMessages.current = 0
-        totalUpPercent.current = 0
+  // Initialize WebSocket connection with retry logic
+  const initWebSocket = () => {
+    if (!isMounted.current) return
+    if (wsRef.current?.readyState === WebSocket.OPEN) return
 
-        setDashboardData({
-          pingCount: count,
-          uptime,
-          lastPing,
-          performanceScore: perf,
-        })
-      })
-      .catch((err) => console.error('Initial simulate fetch failed', err))
-  }, [isStarted])
+    cleanup() // Clean up any existing connections
 
-  // 2) Poll logs for uptime + ping count
+    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
+    const ws = new WebSocket(`${proto}://${window.location.host}/api/ws`)
+    wsRef.current = ws
+
+    ws.onopen = () => {
+      console.info('WebSocket connected')
+      // Reset counters on new connection
+      totalMessages.current = 0
+      totalUpPercent.current = 0
+    }
+
+    ws.onerror = (err) => {
+      console.error('WebSocket error', err)
+      if (wsRef.current) {
+        wsRef.current.close()
+      }
+    }
+
+    ws.onmessage = (event) => {
+      try {
+        const { votes } = JSON.parse(event.data) as {
+          votes: { status: 'UP' | 'DOWN'; weight: number }[]
+        }
+        const upCount = votes.filter((v) => v.status === 'UP').length
+        const upPercent = Math.round((upCount / votes.length) * 100)
+
+        totalMessages.current += 1
+        totalUpPercent.current += upPercent
+
+        setDashboardData((prev) => ({
+          ...prev,
+          performanceScore: upPercent,
+          uptime:
+            Math.round((totalUpPercent.current / totalMessages.current) * 10) /
+            10,
+        }))
+      } catch (err) {
+        console.error('Failed to parse WebSocket message', err)
+      }
+    }
+
+    ws.onclose = () => {
+      console.info('WebSocket disconnected')
+      wsRef.current = null
+      
+      // Only attempt to reconnect if component is still mounted
+      if (isMounted.current) {
+        reconnectTimeoutRef.current = setTimeout(() => {
+          initWebSocket()
+        }, 5000)
+      }
+    }
+  }
+
+  // Fetch logs function with error handling
   const fetchLogs = async () => {
+    if (!isMounted.current) return
+
     try {
       const res = await fetch('/api/logs')
+      if (!res.ok) throw new Error('Failed to fetch logs')
+      
       const { logs }: { logs: LogEntry[] } = await res.json()
       const sorted = logs.sort(
         (a, b) =>
@@ -104,54 +154,34 @@ const ValidatorDashboard: React.FC = () => {
       const uptime = count ? Math.round((upCount / count) * 100) : 0
       const lastPing = sorted[0]?.timestamp || ''
 
-      setDashboardData((prev) => ({
-        ...prev,
-        pingCount: count,
-        uptime,
-        lastPing,
-      }))
+      if (isMounted.current) {
+        setDashboardData((prev) => ({
+          ...prev,
+          pingCount: count,
+          uptime,
+          lastPing,
+        }))
+      }
     } catch (err: any) {
       console.error('Failed to fetch logs', err)
+      // Don't show toast for polling errors to avoid spam
     }
   }
 
+  // Initialize WebSocket and start polling on mount
   useEffect(() => {
+    isMounted.current = true
+    initWebSocket()
     fetchLogs()
-    const id = setInterval(fetchLogs, POLL_INTERVAL_MS)
-    return () => clearInterval(id)
-  }, [])
+    pollingIntervalRef.current = setInterval(fetchLogs, POLL_INTERVAL_MS)
 
-  // 3) WS setup for real-time performance updates
-  useEffect(() => {
-    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    const ws = new WebSocket(`${proto}://${window.location.host}/api/ws`)
-
-    ws.onopen = () => console.info('WebSocket connected')
-    ws.onerror = (err) => console.error('WebSocket error', err)
-
-    ws.onmessage = (event) => {
-      const { votes } = JSON.parse(event.data) as {
-        votes: { status: 'UP' | 'DOWN'; weight: number }[]
-      }
-      const upCount = votes.filter((v) => v.status === 'UP').length
-      const upPercent = Math.round((upCount / votes.length) * 100)
-
-      totalMessages.current += 1
-      totalUpPercent.current += upPercent
-
-      setDashboardData((prev) => ({
-        ...prev,
-        performanceScore: upPercent,
-        uptime:
-          Math.round((totalUpPercent.current / totalMessages.current) * 10) /
-          10,
-      }))
+    return () => {
+      isMounted.current = false
+      cleanup()
     }
-
-    return () => ws.close()
   }, [])
 
-  // 4) Send start/stop command only after first render
+  // Handle validator start/stop with better error handling
   useEffect(() => {
     if (skipFirstToggle.current) {
       skipFirstToggle.current = false
@@ -159,15 +189,33 @@ const ValidatorDashboard: React.FC = () => {
     }
 
     const path = isStarted ? '/api/simulate/start' : '/api/simulate/stop'
-    fetch(path, { method: 'POST' }).catch((err) => {
-      console.error(`Failed to ${isStarted ? 'start' : 'stop'} validator`, err)
-      toast({
-        title: 'Error',
-        description: err.message,
-        variant: 'destructive',
+    fetch(path, { method: 'POST' })
+      .then(async (res) => {
+        if (!res.ok) {
+          const error = await res.json().catch(() => ({ message: 'Unknown error' }))
+          throw new Error(error.message || 'Failed to toggle validator')
+        }
+        
+        if (!isStarted) {
+          // Reset counters when stopping
+          totalMessages.current = 0
+          totalUpPercent.current = 0
+          setDashboardData(prev => ({
+            ...prev,
+            performanceScore: 0,
+            uptime: 0
+          }))
+        }
       })
-      setIsStarted((prev) => !prev)
-    })
+      .catch((err) => {
+        console.error(`Failed to ${isStarted ? 'start' : 'stop'} validator`, err)
+        toast({
+          title: 'Error',
+          description: err.message || 'Failed to toggle validator',
+          variant: 'destructive',
+        })
+        setIsStarted((prev) => !prev)
+      })
   }, [isStarted, toast])
 
   const toggleValidator = () => {

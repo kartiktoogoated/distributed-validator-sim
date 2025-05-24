@@ -300,7 +300,10 @@ const ClientDashboard: React.FC = () => {
                         </TabsList>
                         <TabsContent value="uptime">
                           <Suspense fallback={<LoadingSpinner />}>
-                            <UptimeChart siteId={selectedSite.id} />
+                            <UptimeChart 
+                              siteId={selectedSite.id} 
+                              siteUrl={selectedSite.url}
+                            />
                           </Suspense>
                         </TabsContent>
                         <TabsContent value="performance">

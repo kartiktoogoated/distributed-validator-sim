@@ -9,12 +9,11 @@ export interface Vote {
   status: Status;
   weight: number;
 }
-
 export interface GossipPayload {
   site: string;
   vote: Vote;
   validatorId: number;
-  responseTime: number;
+  latencyMs: number;
   timeStamp: string;
   location: string;
 }
@@ -30,16 +29,10 @@ async function cachedLookup(hostname: string) {
     info(`DNS cache hit: ${hostname} -> ${cached.address}`);
     return cached;
   }
-
-  try {
-    const result = await lookup(hostname, { family: 0, verbatim: true });
-    dnsCache.set(hostname, result);
-    info(`DNS cache miss: resolved ${hostname} -> ${result.address}`);
-    return result;
-  } catch (err) {
-    logError(`DNS lookup failed for ${hostname}: ${(err as Error).message}`);
-    throw err;
-  }
+  const result = await lookup(hostname, { family: 0, verbatim: true });
+  dnsCache.set(hostname, result);
+  info(`DNS cache miss: resolved ${hostname} -> ${result.address}`);
+  return result;
 }
 
 // ── Validator Class ───────────────────────────────
@@ -49,71 +42,100 @@ export class Validator {
   private lastVotes = new Map<string, Vote>();
   private location: string;
 
-  constructor(id: number, location: string = process.env.LOCATION || 'unknown') {
+  constructor(id: number, location: string = process.env.LOCATION || "unknown") {
     this.id = id;
     this.location = location;
   }
 
-  /**
-   * ICMP-ping with DNS caching. Skips first latency-inflated result.
-   */
-  public async checkWebsite(siteUrl: string): Promise<Vote> {
-    const { hostname } = new URL(siteUrl);
-    let address: string;
-
-    try {
-      const dnsResult = await cachedLookup(hostname);
-      address = dnsResult.address;
-    } catch (err) {
-      return { status: "DOWN", weight: 1 };
-    }
-
-    const start = Date.now();
-    let status: Status = "DOWN";
-    let latency = 0;
-
-    try {
-      const res = await ping.promise.probe(address, { timeout: 3 });
-      status = res.alive ? "UP" : "DOWN";
-      if (status === "UP") latency = Date.now() - start;
-      else warn(`Ping responded DOWN for ${siteUrl}`);
-    } catch (err) {
-      logError(`Ping error for ${siteUrl}: ${(err as Error).message}`);
-    }
-
-    const vote: Vote = { status, weight: 1 };
-    this.lastVotes.set(siteUrl, vote);
-
-    // 🚫 Skip the first ping due to DNS warm-up latency
-    if (!skipFirstPingForSite.has(siteUrl)) {
-      skipFirstPingForSite.add(siteUrl);
-      info(`Skipped first ping result for ${siteUrl} (DNS warm-up)`);
-      return vote;
-    }
-
-    try {
-      await sendToTopic("validator-logs", {
-        validatorId: this.id,
-        url: siteUrl,
-        status,
-        latencyMs: latency,
-        timestamp: new Date().toISOString(),
-        location: this.location,
-      });
-      info(`📡 ${this.id}@${this.location} pinged ${siteUrl}: ${status} (${latency}ms)`);
-    } catch (err) {
-      logError(`Failed to send to Kafka: ${(err as Error).message}`);
-    }
-
+  private recordVote(origin: string, status: Status, weight: number): Vote {
+    const vote: Vote = { status, weight };
+    this.lastVotes.set(origin, vote);
     return vote;
   }
 
   /**
-   * Broadcast vote via HTTP POST to peers.
+   * ICMP-ping + HTTP check. Returns status + latency.
    */
+  public async checkWebsite(siteUrl: string): Promise<{ vote: Vote; latency: number }> {
+    const origin = new URL(siteUrl).origin;
+    const hostname = new URL(siteUrl).hostname;
+
+    // DNS resolve
+    let address: string;
+    try {
+      address = (await cachedLookup(hostname)).address;
+    } catch {
+      return { vote: this.recordVote(origin, "DOWN", 1), latency: 0 };
+    }
+
+    // ICMP ping
+    const icmpStart = Date.now();
+    let icmpLatency = 0;
+    let icmpStatus: Status = "DOWN";
+    try {
+      const res = await ping.promise.probe(address, { timeout: 2 });
+      if (res.alive) {
+        icmpStatus = "UP";
+        icmpLatency = Date.now() - icmpStart;
+      }
+    } catch (err: any) {
+      logError(`ICMP ping error for ${origin}: ${err.message}`);
+    }
+
+    // HTTP check
+    let httpStatus: Status = "DOWN";
+    let httpCode: number | null = null;
+    const controller = new AbortController();
+    const to = setTimeout(() => controller.abort(), 3000);
+    try {
+      const r = await fetch(siteUrl, { signal: controller.signal });
+      httpCode = r.status;
+      httpStatus = r.status >= 200 && r.status < 400 ? "UP" : "DOWN";
+    } catch {
+      httpStatus = "DOWN";
+    } finally {
+      clearTimeout(to);
+    }
+
+    const finalStatus: Status = httpStatus;
+    const reportedLatency = finalStatus === "UP" ? icmpLatency : 0;
+
+    // Skip first ping
+    if (!skipFirstPingForSite.has(origin)) {
+      skipFirstPingForSite.add(origin);
+      info(`Skipped first ping for ${origin} (DNS warm-up)`);
+      return { vote: this.recordVote(origin, finalStatus, 1), latency: reportedLatency };
+    }
+
+    // Send to Kafka
+    try {
+      await sendToTopic("validator-logs", {
+        validatorId: this.id,
+        url: origin,
+        status: finalStatus,
+        latencyMs: reportedLatency,
+        timestamp: new Date().toISOString(),
+        location: this.location,
+        icmpLatencyMs: icmpLatency,
+        icmpStatus,
+        httpStatus,
+        httpCode,
+      });
+
+      info(`✅ Validator ${this.id}@${this.location} → ${origin}`);
+      info(`   └─ ICMP ${icmpStatus === "UP" ? "🟢" : "🔴"}: ${icmpLatency}ms`);
+      info(`   └─ HTTP ${httpCode ?? "ERR"}: ${httpStatus}`);
+      info(`   └─ Final: ${finalStatus} (Reported: ${reportedLatency}ms)`);
+    } catch (err: any) {
+      logError(`Kafka send failed: ${err.message}`);
+    }
+
+    return { vote: this.recordVote(origin, finalStatus, 1), latency: reportedLatency };
+  }
+
   public gossip(
     siteUrl: string,
-    responseTime: number,
+    latencyMs: number,
     timeStamp: string,
     location: string
   ): void {
@@ -127,7 +149,7 @@ export class Validator {
       site: siteUrl,
       vote,
       validatorId: this.id,
-      responseTime,
+      latencyMs,
       timeStamp,
       location,
     };
