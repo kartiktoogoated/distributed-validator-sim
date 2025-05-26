@@ -223,4 +223,4 @@ wss.on("connection", (client: WebSocket) => {
 // Start server
 server.listen(PORT, "0.0.0.0", () => {
   info(`🧿 Aggregator listening on ${PORT}`);
-}); 
+});
