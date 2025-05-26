@@ -1,0 +1,33 @@
+# Dependencies
+node_modules
+.pnpm-store
+.npm
+.yarn
+
+# Build outputs
+dist
+build
+.turbo
+.next
+out
+
+# Development files
+.git
+.github
+.vscode
+*.log
+.DS_Store
+.env*
+!.env.example
+
+# Test files
+coverage
+.nyc_output
+__tests__
+*.test.*
+*.spec.*
+
+# Cache
+.cache
+.eslintcache
+.stylelintcache

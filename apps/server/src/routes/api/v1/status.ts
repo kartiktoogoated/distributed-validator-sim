@@ -27,14 +27,14 @@ export default function createStatusRouter(ws: WebSocketServer) {
       const validator = new Validator(validatorId);
       const vote = await validator.checkWebsite(targetUrl);
 
-      info(`Status ping for ${targetUrl}: ${vote.status} (${vote.weight})`);
+      info(`Status ping for ${targetUrl}: ${vote.vote.status} (${vote.vote.weight})`);
 
       // return exactly the fields you want
       return res.json({
         success: true,
         url: targetUrl,
-        status: vote.status,
-        weight: vote.weight,
+        status: vote.vote.status,
+        weight: vote.vote.weight,
       });
     } catch (err: any) {
       logError(`Status error: ${err.stack || err}`);
