@@ -57,13 +57,13 @@ interface WebSocketMessage {
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
-// Enable trust proxy for rate limiter
-app.set('trust proxy', 1);
-
 // Middleware
 app.use(helmet());
 app.use(cors({ origin: "https://www.deepfry.tech", credentials: true }));
 app.use(express.json());
+
+// Enable trust proxy for rate limiter
+app.set('trust proxy', 1);
 
 app.use(session({
   secret: process.env.SESSION_SECRET || "default-secret",
@@ -91,8 +91,10 @@ const wss = new WebSocketServer({ server, path: "/api/ws" });
 // Global rate-limit
 app.use(globalRateLimiter);
 
-// REST routes
+// REST routes - Mount auth routes first
 app.use("/api/auth", authRouter);
+
+// Other routes
 app.use("/api", websiteRouter);
 app.use("/api/simulate", createSimulationRouter(wss));
 app.use("/api/status", createStatusRouter(wss));

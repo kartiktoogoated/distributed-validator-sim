@@ -15,6 +15,7 @@ authRouter.post('/signup', signup);
 authRouter.post('/verify-otp', verifyPendingSignup);
 authRouter.post('/signin', signin);
 
+// Solana wallet verification
 authRouter.post('/verify-wallet', async (req: Request, res: Response): Promise<void> => {
     try {
         const { wallet, message, signature } = req.body as {
