@@ -6,62 +6,88 @@ import { kafkaBrokerList } from "../config/kafkaConfig";
 import { mailConfig } from "../config/mailConfig";
 import { WebSocketServer, WebSocket } from "ws";
 
+const MAX_RETRIES = 5;
+const RETRY_DELAY_MS = 5000;
+
+async function connectWithRetry(kafkaClient: Kafka, consumer: any, retries = 0): Promise<boolean> {
+  try {
+    await consumer.connect();
+    info(`Alert service connected to Kafka`);
+    return true;
+  } catch (err) {
+    if (retries < MAX_RETRIES) {
+      warn(`Kafka connection failed (attempt ${retries + 1}/${MAX_RETRIES}): ${err}`);
+      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+      return connectWithRetry(kafkaClient, consumer, retries + 1);
+    }
+    error(`Failed to connect to Kafka after ${MAX_RETRIES} attempts: ${err}`);
+    return false;
+  }
+}
+
 export async function startAlertService(wsServer: WebSocketServer): Promise<void> {
-  const kafkaClient = new Kafka({
-    clientId: "alert-service",
-    brokers: kafkaBrokerList,
-    logLevel: logLevel.INFO,
-  });
-  const consumer = kafkaClient.consumer({ groupId: "alert-service" });
+  let kafkaClient: Kafka | null = null;
+  let consumer: any = null;
 
-  await consumer.connect();
-  info(`Alert service connected to Kafka`);
+  try {
+    kafkaClient = new Kafka({
+      clientId: "alert-service",
+      brokers: kafkaBrokerList,
+      logLevel: logLevel.INFO,
+    });
+    consumer = kafkaClient.consumer({ groupId: "alert-service" });
 
-  const topic = process.env.VALIDATOR_STATUS_TOPIC ?? "validator-status";
-  await consumer.subscribe({ topic, fromBeginning: false });
-  info(`Subscribed to topic '${topic}'`);
+    const connected = await connectWithRetry(kafkaClient, consumer);
+    if (!connected) {
+      warn("Alert service starting without Kafka - alerts will be disabled");
+      return;
+    }
 
-  const transporter = nodemailer.createTransport({
-    host: mailConfig.SMTP_HOST,
-    port: mailConfig.SMTP_PORT,
-    secure: mailConfig.SMTP_SECURE,
-    auth: {
-      user: mailConfig.SMTP_USER,
-      pass: mailConfig.SMTP_PASS,
-    },
-  });
+    const topic = process.env.VALIDATOR_STATUS_TOPIC ?? "validator-status";
+    await consumer.subscribe({ topic, fromBeginning: false });
+    info(`Subscribed to topic '${topic}'`);
 
-  await consumer.run({
-    eachMessage: async ({ message }) => {
-      try {
-        const payload = JSON.parse(message.value!.toString()) as {
-          url: string;
-          consensus: "UP" | "DOWN";
-          votes: Array<{
-            validatorId: number;
-            status: "UP" | "DOWN";
-            weight: number;
-            responseTime: number;
-            location: string;
-          }>;
-          timeStamp: string;
-        };
+    const transporter = nodemailer.createTransport({
+      host: mailConfig.SMTP_HOST,
+      port: mailConfig.SMTP_PORT,
+      secure: mailConfig.SMTP_SECURE,
+      auth: {
+        user: mailConfig.SMTP_USER,
+        pass: mailConfig.SMTP_PASS,
+      },
+    });
 
-        // look up the user's email
-        const siteRecord = await prisma.website.findUnique({
-          where: { url: payload.url },
-          select: { user: { select: { email: true } } },
-        });
-        const userEmail = siteRecord?.user.email;
-        if (!userEmail) {
-          warn(`No user/email for site '${payload.url}', skipping alerts.`);
-          return;
-        }
+    await consumer.run({
+      eachMessage: async ({ message }: { message: { value: Buffer } }) => {
+        try {
+          const payload = JSON.parse(message.value!.toString()) as {
+            url: string;
+            consensus: "UP" | "DOWN";
+            votes: Array<{
+              validatorId: number;
+              status: "UP" | "DOWN";
+              weight: number;
+              responseTime: number;
+              location: string;
+            }>;
+            timeStamp: string;
+          };
 
-        // for each DOWN vote, email + WS-broadcast
-        for (const v of payload.votes.filter((v) => v.status === "DOWN")) {
-          const subject = `🚨 ALERT: ${payload.url} DOWN in ${v.location}`;
-          const html = `
+          // look up the user's email
+          const siteRecord = await prisma.website.findUnique({
+            where: { url: payload.url },
+            select: { user: { select: { email: true } } },
+          });
+          const userEmail = siteRecord?.user.email;
+          if (!userEmail) {
+            warn(`No user/email for site '${payload.url}', skipping alerts.`);
+            return;
+          }
+
+          // for each DOWN vote, email + WS-broadcast
+          for (const v of payload.votes.filter((v) => v.status === "DOWN")) {
+            const subject = `🚨 ALERT: ${payload.url} DOWN in ${v.location}`;
+            const html = `
 <!DOCTYPE html>
 <html>
 <head>
@@ -116,39 +142,48 @@ export async function startAlertService(wsServer: WebSocketServer): Promise<void
 </body>
 </html>`.trim();
 
-          // send mail
-          await transporter.sendMail({
-            from: mailConfig.MAIL_FROM,
-            to: userEmail,
-            subject,
-            html,
-          });
-          info(`Email sent: ${payload.url} @ ${v.location} → ${userEmail}`);
-
-          // broadcast to frontend
-          const wsEvent = {
-            type: "REGION_DOWN",
-            data: {
-              url: payload.url,
-              validatorId: v.validatorId,
-              location: v.location,
-              responseTime: v.responseTime,
-              consensus: payload.consensus,
-              timeStamp: payload.timeStamp,
-            },
-          };
-          wsServer.clients.forEach((client) => {
-            if (client.readyState === WebSocket.OPEN) {
-              client.send(JSON.stringify(wsEvent));
+            try {
+              // send mail
+              await transporter.sendMail({
+                from: mailConfig.MAIL_FROM,
+                to: userEmail,
+                subject,
+                html,
+              });
+              info(`Email sent: ${payload.url} @ ${v.location} → ${userEmail}`);
+            } catch (mailErr) {
+              error(`Failed to send email: ${mailErr}`);
+              // Continue with WebSocket broadcast even if email fails
             }
-          });
-          info(`WS broadcast: REGION_DOWN for ${payload.url} @ ${v.location}`);
+
+            // broadcast to frontend
+            const wsEvent = {
+              type: "REGION_DOWN",
+              data: {
+                url: payload.url,
+                validatorId: v.validatorId,
+                location: v.location,
+                responseTime: v.responseTime,
+                consensus: payload.consensus,
+                timeStamp: payload.timeStamp,
+              },
+            };
+            wsServer.clients.forEach((client) => {
+              if (client.readyState === WebSocket.OPEN) {
+                client.send(JSON.stringify(wsEvent));
+              }
+            });
+            info(`WS broadcast: REGION_DOWN for ${payload.url} @ ${v.location}`);
+          }
+        } catch (err: any) {
+          error(`Error in alertService.eachMessage: ${err.stack || err}`);
         }
-      } catch (err: any) {
-        error(`Error in alertService.eachMessage: ${err.stack || err}`);
-      }
-    },
-  });
+      },
+    });
+  } catch (err: any) {
+    error(`Failed to start alert service: ${err.stack || err}`);
+    // Don't throw - allow the service to continue without alerts
+  }
 }
 
 // If run standalone...
