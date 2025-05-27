@@ -1,6 +1,7 @@
 import express, { Router, Request, Response } from "express";
 import axios from "axios";
 import { info, warn, error as logError } from "../../utils/logger";
+import { URL } from 'url';
 
 export type State = "Follower" | "Candidate" | "Leader";
 
@@ -76,6 +77,20 @@ export class RaftNode {
   ) {
     info(`Node ${this.id} starting as Follower`);
     this.resetElectionTimeout();
+  }
+
+  private validateAndFormatPeers(peers: string[]): string[] {
+    return peers.map(peer => {
+      try {
+        // Ensure peer has http:// prefix
+        const url = peer.startsWith('http') ? peer : `http://${peer}`;
+        new URL(url); // Validate URL format
+        return url;
+      } catch (err) {
+        warn(`Invalid peer URL ${peer}, skipping`);
+        return '';
+      }
+    }).filter(Boolean); // Remove empty strings
   }
 
   // ————— Election timeout / heartbeat —————

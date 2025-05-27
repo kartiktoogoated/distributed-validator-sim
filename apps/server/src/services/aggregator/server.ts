@@ -57,6 +57,9 @@ interface WebSocketMessage {
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
+// Enable trust proxy for rate limiter
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(helmet());
 app.use(cors({ origin: "https://www.deepfry.tech", credentials: true }));
