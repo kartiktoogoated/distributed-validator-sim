@@ -97,7 +97,6 @@ app.use("/api", websiteRouter);
 app.use("/api/simulate", createSimulationRouter(wss));
 app.use("/api/status", createStatusRouter(wss));
 app.use("/api/logs", createLogsRouter());
-app.use('/api/auth', SolanaRouter);
 
 // Validator setup (Aggregator also acts as a validator)
 const validatorId = Number(process.env.VALIDATOR_ID);
