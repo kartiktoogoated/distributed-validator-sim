@@ -16,6 +16,8 @@ interface LogEntry {
   timestamp: string
   latency: number
   site?: string
+  validatorId?: string
+  location?: string
 }
 
 interface MinuteBucket {
@@ -23,6 +25,8 @@ interface MinuteBucket {
   pingTime: number | null
   isDown?: boolean
   site?: string
+  validatorId?: string
+  location?: string
 }
 
 let historyCache: LogEntry[] | null = null
@@ -113,29 +117,47 @@ const PingChart: React.FC<PingChartProps> = ({ isStarted }) => {
             formattedTime: formatLabel(log.timestamp),
             pingTime: log.latency === 0 ? null : log.latency,
             isDown: log.latency === 0,
-            site: (log as any).site,
+            site: log.site,
+            validatorId: log.validatorId,
+            location: log.location
           }))
         setData(slice)
         return
       }
       try {
-        const res = await fetch('/api/logs?validatorId=0');
-        if (res.status === 429) return
-        const json = await res.json()
-        if (json.success && Array.isArray(json.logs)) {
-          historyCache = json.logs
-          historyCacheTime = now
-          const slice = (json.logs as any[])
-            .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-            .slice(-60)
-            .map((log) => ({
-              formattedTime: formatLabel(log.timestamp),
-              pingTime: log.latency === 0 ? null : log.latency,
-              isDown: log.latency === 0,
-              site: log.site,
-            }))
-          setData(slice)
-        }
+        // Load data from all validators
+        const [validator1Res, validator2Res] = await Promise.all([
+          fetch('/api/logs?validatorId=1'),
+          fetch('/api/logs?validatorId=2')
+        ])
+        
+        if (validator1Res.status === 429 || validator2Res.status === 429) return
+        
+        const [validator1Data, validator2Data] = await Promise.all([
+          validator1Res.json(),
+          validator2Res.json()
+        ])
+
+        const allLogs = [
+          ...(validator1Data.success ? validator1Data.logs : []),
+          ...(validator2Data.success ? validator2Data.logs : [])
+        ]
+
+        historyCache = allLogs
+        historyCacheTime = now
+        
+        const slice = allLogs
+          .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+          .slice(-60)
+          .map((log) => ({
+            formattedTime: formatLabel(log.timestamp),
+            pingTime: log.latency === 0 ? null : log.latency,
+            isDown: log.latency === 0,
+            site: log.site,
+            validatorId: log.validatorId,
+            location: log.location
+          }))
+        setData(slice)
       } catch (e) {
         console.error('Failed to load logs for chart', e)
       }
@@ -147,26 +169,43 @@ const PingChart: React.FC<PingChartProps> = ({ isStarted }) => {
   // 2) polling only when started
   useEffect(() => {
     if (!isStarted) return
-    const id = setInterval(() => {
-      fetch('/api/logs')
-        .then((r) => (r.status === 429 ? null : r.json()))
-        .then((json: any) => {
-          if (json?.success && Array.isArray(json.logs)) {
-            historyCache = json.logs
-            historyCacheTime = Date.now()
-            const slice = (json.logs as any[])
-              .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-              .slice(-60)
-              .map((log) => ({
-                formattedTime: formatLabel(log.timestamp),
-                pingTime: log.latency === 0 ? null : log.latency,
-                isDown: log.latency === 0,
-                site: log.site,
-              }))
-            setData(slice)
-          }
-        })
-        .catch(() => {})
+    const id = setInterval(async () => {
+      try {
+        const [validator1Res, validator2Res] = await Promise.all([
+          fetch('/api/logs?validatorId=1'),
+          fetch('/api/logs?validatorId=2')
+        ])
+        
+        if (validator1Res.status === 429 || validator2Res.status === 429) return
+        
+        const [validator1Data, validator2Data] = await Promise.all([
+          validator1Res.json(),
+          validator2Res.json()
+        ])
+
+        const allLogs = [
+          ...(validator1Data.success ? validator1Data.logs : []),
+          ...(validator2Data.success ? validator2Data.logs : [])
+        ]
+
+        historyCache = allLogs
+        historyCacheTime = Date.now()
+        
+        const slice = allLogs
+          .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+          .slice(-60)
+          .map((log) => ({
+            formattedTime: formatLabel(log.timestamp),
+            pingTime: log.latency === 0 ? null : log.latency,
+            isDown: log.latency === 0,
+            site: log.site,
+            validatorId: log.validatorId,
+            location: log.location
+          }))
+        setData(slice)
+      } catch (e) {
+        console.error('Failed to load logs', e)
+      }
     }, 30_000)
     return () => clearInterval(id)
   }, [isStarted])

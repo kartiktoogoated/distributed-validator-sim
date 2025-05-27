@@ -16,7 +16,6 @@ import axios, { AxiosError } from "axios";
 import { Validator } from "../../core/Validator";
 import { info, error as logError } from "../../utils/logger";
 import { register as promRegister } from "../../metrics";
-import { startKafkaProducer } from "../../services/producer";
 import { startAlertService } from "../../services/alertService";
 import { globalRateLimiter } from "../../middlewares/rateLimiter";
 import { Kafka, logLevel } from "kafkajs";
@@ -140,7 +139,8 @@ async function collectValidatorStatus(): Promise<ValidatorResponse[]> {
   const results = await Promise.allSettled(
     peers.map(async (validatorUrl) => {
       try {
-        const response = await axios.get<ValidatorStatus>(`${validatorUrl}/status`);
+        const url = validatorUrl.startsWith('http') ? validatorUrl : `http://${validatorUrl}`;
+        const response = await axios.get<ValidatorStatus>(`${url}/status`);
         return {
           url: validatorUrl,
           status: response.data
@@ -207,9 +207,8 @@ app.get("/api/validators", async (_req: Request, res: Response<ValidatorResponse
 });
 
 // Kafka + Alerts
-startKafkaProducer().catch((err) => logError(`Kafka init failed: ${err}`));
-startAlertService(wss).catch((err) => {
-  logError(`AlertService failed: ${err}`);
+startAlertService(wss).catch((err: any) => {
+  logError(`Failed to start AlertService: ${err.stack || err}`);
   process.exit(1);
 });
 

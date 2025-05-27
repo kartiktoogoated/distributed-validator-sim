@@ -21,14 +21,15 @@ services:
 
   db:
     image: postgres:14-alpine
+    container_name: postgres-db
     environment:
-      - POSTGRES_USER=prisma
-      - POSTGRES_PASSWORD=prisma
-      - POSTGRES_DB=mydb
+      POSTGRES_USER: prisma
+      POSTGRES_PASSWORD: prisma
+      POSTGRES_DB: mydb
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - db_data:/var/lib/postgresql/data
     networks:
       - raftnet
 
@@ -96,7 +97,7 @@ services:
       - raftnet
 
 volumes:
-  postgres_data:
+  db_data:
   grafana-storage:
 
 networks:

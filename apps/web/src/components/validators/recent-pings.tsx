@@ -11,6 +11,8 @@ interface LogEntry {
   status: 'UP' | 'DOWN';
   latency: number;
   timestamp: string;
+  validatorId: number;
+  location: string;
 }
 
 interface RecentPingsProps {
@@ -32,13 +34,31 @@ const RecentPings: React.FC<RecentPingsProps> = ({ isStarted }) => {
 
   const load = async () => {
     try {
-      const res = await fetch('/api/logs?validatorId=0');
-      if (!res.ok) return;
-      const json = await res.json();
-      if (json.success && Array.isArray(json.logs)) {
-        setPings(json.logs.slice(0, 15));
-        setLoading(false);
-      }
+      // Load data from all validators
+      const [validator1Res, validator2Res] = await Promise.all([
+        fetch('/api/logs?validatorId=1'),
+        fetch('/api/logs?validatorId=2')
+      ]);
+      
+      if (!validator1Res.ok || !validator2Res.ok) return;
+      
+      const [validator1Data, validator2Data] = await Promise.all([
+        validator1Res.json(),
+        validator2Res.json()
+      ]);
+
+      const allLogs = [
+        ...(validator1Data.success ? validator1Data.logs : []),
+        ...(validator2Data.success ? validator2Data.logs : [])
+      ];
+
+      // Sort by timestamp and take the most recent 15
+      const sortedLogs = allLogs
+        .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+        .slice(0, 15);
+
+      setPings(sortedLogs);
+      setLoading(false);
     } catch (e) {
       console.error('Failed to load recent pings', e);
     }
@@ -93,10 +113,15 @@ const RecentPings: React.FC<RecentPingsProps> = ({ isStarted }) => {
             >
               <div>
                 <div className="font-medium">{ping.site}</div>
-                <div className="text-sm text-muted-foreground flex items-center">
+                <div className="text-sm text-muted-foreground flex items-center gap-2">
                   {ping.status === 'UP' ? (
                     <>
-                      <span className="mr-2">{ping.latency}ms</span>
+                      <span>{ping.latency}ms</span>
+                      <span>•</span>
+                      <span>Validator {ping.validatorId}</span>
+                      <span>•</span>
+                      <span>{ping.location}</span>
+                      <span>•</span>
                       <span>{formatTime(ping.timestamp)}</span>
                     </>
                   ) : (

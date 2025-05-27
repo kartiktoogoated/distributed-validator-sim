@@ -42,6 +42,7 @@ const POLL_INTERVAL_MS = 60_000
 
 const ValidatorDashboard: React.FC = () => {
   const [isStarted, setIsStarted] = useState(false)
+  const [validatorId, setValidatorId] = useState<number | null>(null)
   const { toast } = useToast()
   const skipFirstToggle = useRef(true)
   const wsRef = useRef<WebSocket | null>(null)
@@ -58,6 +59,20 @@ const ValidatorDashboard: React.FC = () => {
 
   const totalMessages = useRef(0)
   const totalUpPercent = useRef(0)
+
+  // Get validator ID on mount
+  useEffect(() => {
+    fetch('/api/status')
+      .then(res => res.json())
+      .then(data => {
+        if (data.validatorId) {
+          setValidatorId(data.validatorId)
+        }
+      })
+      .catch(err => {
+        console.error('Failed to get validator ID:', err)
+      })
+  }, [])
 
   // Cleanup function for all resources
   const cleanup = () => {
@@ -189,7 +204,13 @@ const ValidatorDashboard: React.FC = () => {
     }
 
     const path = isStarted ? '/api/simulate/start' : '/api/simulate/stop'
-    fetch(path, { method: 'POST' })
+    fetch(path, { 
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ validatorId })
+    })
       .then(async (res) => {
         if (!res.ok) {
           const error = await res.json().catch(() => ({ message: 'Unknown error' }))
@@ -206,6 +227,12 @@ const ValidatorDashboard: React.FC = () => {
             uptime: 0
           }))
         }
+
+        toast({
+          title: isStarted ? 'Validator Started' : 'Validator Stopped',
+          description: `Validator ${validatorId} is now ${isStarted ? 'running' : 'stopped'}`,
+          variant: isStarted ? 'default' : 'destructive'
+        })
       })
       .catch((err) => {
         console.error(`Failed to ${isStarted ? 'start' : 'stop'} validator`, err)
@@ -216,7 +243,7 @@ const ValidatorDashboard: React.FC = () => {
         })
         setIsStarted((prev) => !prev)
       })
-  }, [isStarted, toast])
+  }, [isStarted, toast, validatorId])
 
   const toggleValidator = () => {
     setIsStarted((prev) => !prev)
@@ -235,7 +262,7 @@ const ValidatorDashboard: React.FC = () => {
                     Validator Dashboard
                   </h1>
                   <p className="text-muted-foreground">
-                    Monitor and manage your validator node
+                    {validatorId ? `Validator ${validatorId}` : 'Loading validator...'}
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -244,6 +271,7 @@ const ValidatorDashboard: React.FC = () => {
                   </Button>
                   <Button
                     onClick={toggleValidator}
+                    disabled={!validatorId}
                     className={
                       isStarted
                         ? 'bg-red-500 hover:bg-red-600'
