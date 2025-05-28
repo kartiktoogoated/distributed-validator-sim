@@ -59,7 +59,12 @@ const PORT = Number(process.env.PORT) || 3000;
 
 // Middleware
 app.use(helmet());
-app.use(cors({ origin: "https://www.deepfry.tech", credentials: true }));
+app.use(cors({
+  origin: process.env.ALLOWED_ORIGINS?.split(',') || ["http://localhost:5173"],
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+}));
 app.use(express.json());
 
 // Enable trust proxy for rate limiter
