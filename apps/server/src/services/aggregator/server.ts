@@ -19,6 +19,7 @@ import { register as promRegister } from "../../metrics";
 import { startAlertService } from "../../services/alertService";
 import { globalRateLimiter } from "../../middlewares/rateLimiter";
 import { Kafka, logLevel } from "kafkajs";
+import prisma from "../../prismaClient";
 
 // Import all route modules
 import authRouter from "../../routes/api/v1/auth";
@@ -108,11 +109,21 @@ app.use("/api/logs", createLogsRouter());
 // Validator setup (Aggregator also acts as a validator)
 const validatorId = Number(process.env.VALIDATOR_ID);
 const location = process.env.LOCATION!;
-const targetUrl = process.env.TARGET_URL!;
 const pingInterval = Number(process.env.PING_INTERVAL_MS) || 30000;
 
 const validator = new Validator(validatorId, location);
 let lastCheck: ValidatorStatus["lastCheck"] = null;
+
+// Function to get target URL from database
+async function getTargetUrl(): Promise<string> {
+  const website = await prisma.website.findFirst({
+    where: { paused: false }
+  });
+  if (!website) {
+    throw new Error("No active websites found in database");
+  }
+  return website.url;
+}
 
 // Validator endpoints
 app.get("/health", (_req: Request, res: Response) => {
@@ -123,7 +134,7 @@ app.get("/status", (_req: Request, res: Response<ValidatorStatus>) => {
   res.json({
     validatorId,
     location,
-    targetUrl,
+    targetUrl: lastCheck?.vote.status === "UP" ? "Active" : "Inactive",
     lastCheck,
     uptime: process.uptime()
   });
@@ -188,10 +199,11 @@ async function collectValidatorStatus(): Promise<ValidatorResponse[]> {
 setInterval(collectValidatorStatus, collectionInterval);
 
 // Start monitoring (Aggregator also acts as a validator)
-info(`🟢 Aggregator ${validatorId}@${location} is watching ${targetUrl}`);
+info(`🟢 Aggregator ${validatorId}@${location} starting...`);
 
 setInterval(async () => {
   try {
+    const targetUrl = await getTargetUrl();
     const { vote, latency } = await validator.checkWebsite(targetUrl);
     lastCheck = {
       vote,

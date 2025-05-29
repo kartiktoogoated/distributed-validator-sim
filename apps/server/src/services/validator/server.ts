@@ -11,6 +11,7 @@ import helmet from "helmet";
 import { Validator } from "../../core/Validator";
 import { info, error as logError } from "../../../utils/logger";
 import { register as promRegister } from "../../metrics";
+import prisma from "../../prismaClient";
 
 interface ValidatorStatus {
   validatorId: number;
@@ -48,8 +49,7 @@ app.use(express.json());
 
 // Validator setup
 const validatorId = Number(process.env.VALIDATOR_ID);
-const location = process.env.LOCATION!;
-const targetUrl = process.env.TARGET_URL!;
+const location = process.env.LOCATION || "unknown";
 const pingInterval = Number(process.env.PING_INTERVAL_MS) || 30000;
 
 const validator = new Validator(validatorId, location);
@@ -79,17 +79,29 @@ app.get("/status", (_req: Request, res: Response<ValidatorStatus>) => {
   res.json({
     validatorId,
     location,
-    targetUrl,
+    targetUrl: lastCheck?.vote.status === "UP" ? "Active" : "Inactive",
     lastCheck,
     uptime: process.uptime()
   });
 });
 
+// Function to get target URL from database
+async function getTargetUrl(): Promise<string> {
+  const website = await prisma.website.findFirst({
+    where: { paused: false }
+  });
+  if (!website) {
+    throw new Error("No active websites found in database");
+  }
+  return website.url;
+}
+
 // Start monitoring
-info(`🟢 Validator ${validatorId}@${location} is watching ${targetUrl}`);
+info(`🟢 Validator ${validatorId}@${location} starting...`);
 
 setInterval(async () => {
   try {
+    const targetUrl = await getTargetUrl();
     const { vote, latency } = await validator.checkWebsite(targetUrl);
     lastCheck = {
       vote,

@@ -38,15 +38,12 @@ interface LogEntry {
   timestamp: string
 }
 
-const POLL_INTERVAL_MS = 60_000
-
 const ValidatorDashboard: React.FC = () => {
   const [isStarted, setIsStarted] = useState(false)
   const [validatorId, setValidatorId] = useState<number | null>(null)
   const { toast } = useToast()
   const skipFirstToggle = useRef(true)
   const wsRef = useRef<WebSocket | null>(null)
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null)
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const isMounted = useRef(true)
 
@@ -79,10 +76,6 @@ const ValidatorDashboard: React.FC = () => {
     if (wsRef.current) {
       wsRef.current.close()
       wsRef.current = null
-    }
-    if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current)
-      pollingIntervalRef.current = null
     }
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current)
@@ -117,11 +110,16 @@ const ValidatorDashboard: React.FC = () => {
 
     ws.onmessage = (event) => {
       try {
-        const { votes } = JSON.parse(event.data) as {
-          votes: { status: 'UP' | 'DOWN'; weight: number }[]
+        const data = JSON.parse(event.data) as {
+          url: string;
+          consensus: 'UP' | 'DOWN';
+          votes: Array<{ validatorId: number; status: 'UP' | 'DOWN'; weight: number }>;
+          timeStamp: string;
         }
-        const upCount = votes.filter((v) => v.status === 'UP').length
-        const upPercent = Math.round((upCount / votes.length) * 100)
+        
+        // Calculate up percentage from votes
+        const upCount = data.votes.filter((v) => v.status === 'UP').length
+        const upPercent = Math.round((upCount / data.votes.length) * 100)
 
         totalMessages.current += 1
         totalUpPercent.current += upPercent
@@ -188,7 +186,6 @@ const ValidatorDashboard: React.FC = () => {
     isMounted.current = true
     initWebSocket()
     fetchLogs()
-    pollingIntervalRef.current = setInterval(fetchLogs, POLL_INTERVAL_MS)
 
     return () => {
       isMounted.current = false

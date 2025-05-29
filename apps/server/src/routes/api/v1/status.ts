@@ -2,17 +2,26 @@ import express, { Request, Response } from "express";
 import { WebSocketServer } from "ws";
 import { Validator } from "../../../core/Validator";
 import { info, warn, error as logError } from "../../../../utils/logger";
+import prisma from "../../../prismaClient";
 
 export default function createStatusRouter(ws: WebSocketServer) {
   const router = express.Router();
 
   router.get("/", async (req: Request, res: Response): Promise<any> => {
     try {
-      // figure out which URL to ping
-      const targetUrl =
-        (req.query.url as string) ||
-        process.env.DEFAULT_TARGET_URL ||
-        "http://google.com";
+      // Get the first non-paused website from the database
+      const website = await prisma.website.findFirst({
+        where: { paused: false }
+      });
+
+      if (!website) {
+        return res.status(404).json({ 
+          success: false, 
+          message: "No active websites found in database" 
+        });
+      }
+
+      const targetUrl = website.url;
       info(`Status check requested for ${targetUrl}`);
 
       // run a single checkWebsite() locally
@@ -32,6 +41,7 @@ export default function createStatusRouter(ws: WebSocketServer) {
       // return exactly the fields you want
       return res.json({
         success: true,
+        validatorId,
         url: targetUrl,
         status: vote.vote.status,
         weight: vote.vote.weight,

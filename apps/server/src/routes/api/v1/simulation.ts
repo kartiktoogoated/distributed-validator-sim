@@ -9,6 +9,7 @@ import { Validator, Status, GossipPayload } from "../../../core/Validator";
 import { GossipManager } from "../../../core/GossipManager";
 import { RaftNode } from "../../../core/raft";
 import { latencyHistogram, statusCounter } from "../../../metrics";
+import axios from "axios";
 
 const GOSSIP_ROUNDS = 1;
 const PING_INTERVAL_MS = Number(process.env.PING_INTERVAL_MS) || 60_000;
@@ -66,19 +67,47 @@ export default function createSimulationRouter(
     info(`🔴 Simulation loop stopped for Validator ${localValidatorId}`);
   }
 
-  SimulationRouter.post("/gossip", async (req: Request<{}, any, GossipPayload>, res) => {
+  SimulationRouter.post("/gossip", async (req: Request, res: Response) => {
     // TODO: Add your gossip handler if needed
     res.sendStatus(204);
   });
 
-  SimulationRouter.post("/start", (_req, res) => {
-    startValidationLoop();
-    res.json({ success: true, message: "Validation loop started" });
+  SimulationRouter.post("/start", async (_req: Request, res: Response) => {
+    if (process.env.IS_AGGREGATOR === "true") {
+      await Promise.all(
+        peerAddresses.map(async (peer) => {
+          try {
+            const url = `http://${peer}/api/simulate/start`;
+            await axios.post(url);
+          } catch (err) {
+            logError(`Failed to start validator at ${peer}: ${err}`);
+          }
+        })
+      );
+      res.json({ success: true, message: "Start command sent to all validators" });
+    } else {
+      startValidationLoop();
+      res.json({ success: true, message: "Validation loop started" });
+    }
   });
 
-  SimulationRouter.post("/stop", (_req, res) => {
-    stopValidationLoop();
-    res.json({ success: true, message: "Validation loop stopped" });
+  SimulationRouter.post("/stop", async (_req: Request, res: Response) => {
+    if (process.env.IS_AGGREGATOR === "true") {
+      await Promise.all(
+        peerAddresses.map(async (peer) => {
+          try {
+            const url = `http://${peer}/api/simulate/stop`;
+            await axios.post(url);
+          } catch (err) {
+            logError(`Failed to stop validator at ${peer}: ${err}`);
+          }
+        })
+      );
+      res.json({ success: true, message: "Stop command sent to all validators" });
+    } else {
+      stopValidationLoop();
+      res.json({ success: true, message: "Validation loop stopped" });
+    }
   });
 
   SimulationRouter.get("/", async (_req: Request, res: Response, next) => {
