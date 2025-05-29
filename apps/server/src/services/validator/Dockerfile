@@ -4,23 +4,21 @@ WORKDIR /app
 
 RUN apk add --no-cache curl
 
-# Use PNPM
+# Enable PNPM
 RUN corepack enable && corepack prepare pnpm@10.10.0 --activate
 
-# Copy monorepo configs first
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-
 # Install deps
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
-# Copy all source
+# Copy source
 COPY . .
 
-# Prisma
+# Generate Prisma Client
 WORKDIR /app/packages/db
 RUN pnpm install --frozen-lockfile && pnpm prisma generate
 
-# Build everything
+# Build app
 WORKDIR /app
 RUN pnpm turbo run build --filter=distributed-validator-sim...
 
@@ -28,11 +26,17 @@ RUN pnpm turbo run build --filter=distributed-validator-sim...
 FROM node:18-alpine AS runner
 WORKDIR /app
 
-# Copy from builder
+# Install required tools and enable pnpm
+RUN apk add --no-cache openssl curl && corepack enable && corepack prepare pnpm@10.10.0 --activate
+
+# Copy output from builder
 COPY --from=builder /app .
 
-# Expose default port
+# Set runtime environment
+ENV NODE_ENV=production
+ENV IS_VALIDATOR=true
+
+# Expose port
 EXPOSE 3000
 
-# Start validator service
-CMD ["node", "apps/server/dist/src/services/validator/server.js"] 
+# Note: CMD is overridden by `command:` in docker-compose.yml
