@@ -66,6 +66,8 @@ services:
       - "3000:3000"
     env_file:
       - .env.aggregator
+    environment:
+      - IS_AGGREGATOR=true
     depends_on:
       - db
       - kafka
@@ -77,10 +79,33 @@ services:
         until nc -z db 5432; do sleep 1; done &&
         echo '✅ DB ready, running migrations...' &&
         cd /app/packages/db &&
-        pnpm install --prod &&
-        pnpm prisma migrate deploy &&
+        npx prisma migrate deploy &&
         echo '🚀 Starting Aggregator...' &&
         node /app/apps/server/dist/src/services/aggregator/server.js
+      "
+
+  api-server:
+    build:
+      context: .
+      dockerfile: apps/server/src/services/api-server/Dockerfile
+    ports:
+      - "3004:3000"
+    env_file:
+      - .env.api-server
+    depends_on:
+      - db
+      - kafka
+    networks:
+      - raftnet
+    command: >
+      sh -c "
+        echo '🕒 Waiting for DB...' &&
+        until nc -z db 5432; do sleep 1; done &&
+        echo '✅ DB ready, running migrations...' &&
+        cd /app/packages/db &&
+        npx prisma migrate deploy &&
+        echo '🚀 Starting API Server...' &&
+        node /app/apps/server/dist/src/services/api-server/api-server.js
       "
 
   validator1:
@@ -101,8 +126,7 @@ services:
         until nc -z db 5432; do sleep 1; done &&
         echo '✅ DB ready, running migrations...' &&
         cd /app/packages/db &&
-        pnpm install --prod &&
-        pnpm prisma migrate deploy &&
+        npx prisma migrate deploy &&
         echo '🚀 Starting Validator 1...' &&
         node /app/apps/server/dist/src/services/validator/server.js
       "
@@ -125,8 +149,7 @@ services:
         until nc -z db 5432; do sleep 1; done &&
         echo '✅ DB ready, running migrations...' &&
         cd /app/packages/db &&
-        pnpm install --prod &&
-        pnpm prisma migrate deploy &&
+        npx prisma migrate deploy &&
         echo '🚀 Starting Validator 2...' &&
         node /app/apps/server/dist/src/services/validator/server.js
       "

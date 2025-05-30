@@ -68,12 +68,31 @@ export default function createSimulationRouter(
   }
 
   SimulationRouter.post("/gossip", async (req: Request, res: Response) => {
-    // TODO: Add your gossip handler if needed
-    res.sendStatus(204);
+    try {
+      const { site, vote, validatorId, latencyMs, timeStamp, location } = req.body;
+      validatorInstance.receiveGossip(site, vote, validatorId);
+      
+      // Save to database
+      await prisma.validatorLog.create({
+        data: {
+          validatorId: validatorId,
+          site: site,
+          status: vote.status,
+          latency: latencyMs,
+          timestamp: new Date(timeStamp)
+        }
+      });
+
+      res.sendStatus(204);
+    } catch (err) {
+      logError(`Gossip error: ${err}`);
+      res.status(500).json({ success: false, error: "Failed to process gossip" });
+    }
   });
 
   SimulationRouter.post("/start", async (_req: Request, res: Response) => {
     if (process.env.IS_AGGREGATOR === "true") {
+      // Aggregator should only coordinate validators
       await Promise.all(
         peerAddresses.map(async (peer) => {
           try {
@@ -86,6 +105,7 @@ export default function createSimulationRouter(
       );
       res.json({ success: true, message: "Start command sent to all validators" });
     } else {
+      // Validators should start their validation loop
       startValidationLoop();
       res.json({ success: true, message: "Validation loop started" });
     }
@@ -93,6 +113,7 @@ export default function createSimulationRouter(
 
   SimulationRouter.post("/stop", async (_req: Request, res: Response) => {
     if (process.env.IS_AGGREGATOR === "true") {
+      // Aggregator should only stop validators
       await Promise.all(
         peerAddresses.map(async (peer) => {
           try {
@@ -105,6 +126,7 @@ export default function createSimulationRouter(
       );
       res.json({ success: true, message: "Stop command sent to all validators" });
     } else {
+      // Validators should stop their validation loop
       stopValidationLoop();
       res.json({ success: true, message: "Validation loop stopped" });
     }
@@ -112,7 +134,10 @@ export default function createSimulationRouter(
 
   SimulationRouter.get("/", async (_req: Request, res: Response, next) => {
     try {
-      startValidationLoop();
+      // Only validators should run validation
+      if (process.env.IS_AGGREGATOR !== "true") {
+        startValidationLoop();
+      }
       const sites = await prisma.website.findMany({ where: { paused: false } });
       const payloads = await Promise.all(
         sites.map((w) => executeRoundForUrl(wsServer, w.url))
@@ -136,6 +161,16 @@ async function executeRoundForUrl(
   votes: Array<{ validatorId: number; status: Status; weight: number }>;
   timeStamp: string;
 }> {
+  // Skip execution for aggregator
+  if (process.env.IS_AGGREGATOR === "true") {
+    return {
+      url,
+      consensus: "UP",
+      votes: [],
+      timeStamp: new Date().toISOString()
+    };
+  }
+
   let voteResult: { vote: { status: Status; weight: number }; latency: number };
   let timeStamp: string;
 

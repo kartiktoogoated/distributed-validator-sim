@@ -4,7 +4,9 @@ WORKDIR /app
 
 RUN apk add --no-cache curl
 
-# Enable PNPM
+# Enable PNPM without prompts
+ENV PNPM_HOME="/root/.local/share/pnpm"
+ENV PATH="${PNPM_HOME}:${PATH}"
 RUN corepack enable && corepack prepare pnpm@10.10.0 --activate
 
 # Install deps
@@ -26,8 +28,8 @@ RUN pnpm turbo run build --filter=distributed-validator-sim...
 FROM node:18-alpine AS runner
 WORKDIR /app
 
-# Install required tools and enable pnpm
-RUN apk add --no-cache openssl curl && corepack enable && corepack prepare pnpm@10.10.0 --activate
+# Install required tools
+RUN apk add --no-cache openssl curl
 
 # Copy output from builder
 COPY --from=builder /app .

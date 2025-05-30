@@ -36,9 +36,9 @@ COPY --from=builder /app .
 
 # Set runtime environment
 ENV NODE_ENV=production
-ENV IS_AGGREGATOR=true
+ENV IS_API_SERVER=true
 
 # Expose port
 EXPOSE 3000
 
-# Note: CMD is overridden by `command:` in docker-compose.yml
+# Note: CMD is overridden by `command:` in docker-compose.yml 

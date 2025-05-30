@@ -6,239 +6,122 @@ if (process.env.IS_AGGREGATOR !== "true") {
 }
 
 import express, { Request, Response } from "express";
-import cors from "cors";
-import helmet from "helmet";
 import http from "http";
-import { WebSocketServer, WebSocket } from "ws";
-import passport from "passport";
-import session from "express-session";
-import axios, { AxiosError } from "axios";
-import { Validator } from "../../core/Validator";
 import { info, error as logError } from "../../utils/logger";
-import { register as promRegister } from "../../metrics";
-import { startAlertService } from "../../services/alertService";
-import { globalRateLimiter } from "../../middlewares/rateLimiter";
+import { Counter, Gauge, Histogram } from 'prom-client';
+import { sendToTopic } from '../../services/producer';
+import { mailConfig } from '../../config/mailConfig';
+import { kafkaBrokerList } from '../../config/kafkaConfig';
+import nodemailer from 'nodemailer';
 import { Kafka, logLevel } from "kafkajs";
 import prisma from "../../prismaClient";
-
-// Import all route modules
-import authRouter from "../../routes/api/v1/auth";
-import websiteRouter from "../../routes/api/v1/website";
-import createSimulationRouter from "../../routes/api/v1/simulation";
-import createStatusRouter from "../../routes/api/v1/status";
-import createLogsRouter from "../../routes/api/v1/logs";
-import SolanaRouter from "../../routes/api/v1/verify-wallet";
-
-interface ValidatorStatus {
-  validatorId: number;
-  location: string;
-  targetUrl: string;
-  lastCheck: {
-    vote: {
-      status: "UP" | "DOWN";
-      weight: number;
-    };
-    latency: number;
-    timestamp: string;
-  } | null;
-  uptime: number;
-}
-
-interface ValidatorResponse {
-  url: string;
-  status?: ValidatorStatus;
-  error?: string;
-}
-
-interface WebSocketMessage {
-  type: string;
-  data: any;
-}
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
-// Middleware
-app.use(helmet());
-app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS?.split(',') || ["http://localhost:5173"],
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-}));
-app.use(express.json());
-
-// Enable trust proxy for rate limiter
-app.set('trust proxy', 1);
-
-app.use(session({
-  secret: process.env.SESSION_SECRET || "default-secret",
-  resave: false,
-  saveUninitialized: false,
-}));
-app.use(passport.initialize());
-app.use(passport.session());
-
-// Prometheus metrics endpoint
-app.get("/metrics", async (_req: Request, res: Response) => {
-  try {
-    res.setHeader("Content-Type", promRegister.contentType);
-    res.end(await promRegister.metrics());
-  } catch (err) {
-    logError(`Metrics scrape failed: ${err}`);
-    res.status(500).end();
-  }
-});
-
-// HTTP + WS setup
-const server = http.createServer(app);
-const wss = new WebSocketServer({ server, path: "/api/ws" });
-
-// Global rate-limit
-app.use(globalRateLimiter);
-
-// REST routes - Mount auth routes first
-app.use("/api/auth", authRouter);
-
-// Other routes
-app.use("/api", websiteRouter);
-app.use("/api/simulate", createSimulationRouter(wss));
-app.use("/api/status", createStatusRouter(wss));
-app.use("/api/logs", createLogsRouter());
-
-// Validator setup (Aggregator also acts as a validator)
-const validatorId = Number(process.env.VALIDATOR_ID);
-const location = process.env.LOCATION!;
-const pingInterval = Number(process.env.PING_INTERVAL_MS) || 30000;
-
-const validator = new Validator(validatorId, location);
-let lastCheck: ValidatorStatus["lastCheck"] = null;
-
-// Function to get target URL from database
-async function getTargetUrl(): Promise<string> {
-  const website = await prisma.website.findFirst({
-    where: { paused: false }
-  });
-  if (!website) {
-    throw new Error("No active websites found in database");
-  }
-  return website.url;
-}
-
-// Validator endpoints
+// Minimal health endpoint
 app.get("/health", (_req: Request, res: Response) => {
-  res.json({ status: "ok", validatorId, location });
+  res.json({ status: "ok" });
 });
 
-app.get("/status", (_req: Request, res: Response<ValidatorStatus>) => {
-  res.json({
-    validatorId,
-    location,
-    targetUrl: lastCheck?.vote.status === "UP" ? "Active" : "Inactive",
-    lastCheck,
-    uptime: process.uptime()
-  });
+const server = http.createServer(app);
+
+// --- BEGIN QUORUM/KAFKA LOGIC ---
+const voteCounter = new Counter({
+  name: 'validator_votes_total',
+  help: 'Total number of votes received',
+  labelNames: ['status']
 });
-
-// Validator Status Collection
-const kafkaBrokers = (process.env.KAFKA_BOOTSTRAP_SERVERS || "kafka:9092").split(",");
-const kafkaClient = new Kafka({
-  clientId: 'aggregator',
-  brokers: kafkaBrokers,
-  logLevel: logLevel.INFO,
+const consensusGauge = new Gauge({
+  name: 'site_consensus_status',
+  help: 'Current consensus status for sites (1=UP, 0=DOWN)',
+  labelNames: ['url']
 });
-
-const peers = (process.env.PEERS || "validator1:3000,validator2:3000")
-  .split(",")
-  .map((p) => p.trim())
-  .filter(Boolean);
-
-const collectionInterval = Number(process.env.COLLECTION_INTERVAL_MS) || 30000;
-
-async function collectValidatorStatus(): Promise<ValidatorResponse[]> {
-  const results = await Promise.allSettled(
-    peers.map(async (validatorUrl) => {
-      try {
-        const url = validatorUrl.startsWith('http') ? validatorUrl : `http://${validatorUrl}`;
-        const response = await axios.get<ValidatorStatus>(`${url}/status`);
-        return {
-          url: validatorUrl,
-          status: response.data
-        };
-      } catch (err) {
-        const error = err as AxiosError;
-        logError(`Failed to collect status from ${validatorUrl}: ${error.message}`);
-        return {
-          url: validatorUrl,
-          error: error.message
-        };
-      }
-    })
-  );
-
-  const status = results.map((result, index) => {
-    if (result.status === 'fulfilled') {
-      return result.value;
-    }
-    return {
-      url: peers[index],
-      error: result.reason instanceof Error ? result.reason.message : String(result.reason)
-    };
-  });
-
-  // Broadcast to WebSocket clients
-  const msg: WebSocketMessage = { type: "validator-status", data: status };
-  wss.clients.forEach(client => {
-    if (client.readyState === client.OPEN) client.send(JSON.stringify(msg));
-  });
-
-  return status;
+const voteLatencyHistogram = new Histogram({
+  name: 'vote_processing_latency_seconds',
+  help: 'Time taken to process votes and reach consensus',
+  labelNames: ['url']
+});
+const processedConsensus = new Set<string>();
+const KAFKA_TOPIC = process.env.KAFKA_TOPIC ?? 'validator-logs';
+const AGG_INTERVAL = Number(process.env.PING_INTERVAL_MS) || 10_000;
+const VALIDATOR_IDS = (process.env.VALIDATOR_IDS || '').split(',').map(s => Number(s.trim())).filter(n => !isNaN(n));
+const QUORUM = Math.ceil(VALIDATOR_IDS.length / 2);
+let ALERT_EMAILS: Record<string, string> = {};
+if (process.env.LOCATION_EMAILS) {
+  try { ALERT_EMAILS = JSON.parse(process.env.LOCATION_EMAILS); } catch { ALERT_EMAILS = {}; }
 }
-
-// Start collecting validator status
-setInterval(collectValidatorStatus, collectionInterval);
-
-// Start monitoring (Aggregator also acts as a validator)
-info(`🟢 Aggregator ${validatorId}@${location} starting...`);
-
-setInterval(async () => {
-  try {
-    const targetUrl = await getTargetUrl();
-    const { vote, latency } = await validator.checkWebsite(targetUrl);
-    lastCheck = {
-      vote,
-      latency,
-      timestamp: new Date().toISOString()
-    };
-    info(`Check result for ${targetUrl}: ${vote.status === "UP" ? "✅" : "❌"} (${latency}ms)`);
-  } catch (err) {
-    logError(`Check failed: ${err}`);
+const mailTransporter = nodemailer.createTransport({
+  host: mailConfig.SMTP_HOST,
+  port: Number(mailConfig.SMTP_PORT),
+  secure: mailConfig.SMTP_SECURE,
+  auth: { user: mailConfig.SMTP_USER, pass: mailConfig.SMTP_PASS },
+});
+const voteBuffer: Record<string, any[]> = {};
+const VOTE_TTL_MS = 5 * 60 * 1000;
+function cleanupOldVotes() {
+  const now = Date.now();
+  for (const key of Object.keys(voteBuffer)) {
+    const entries = voteBuffer[key];
+    if (entries.length === 0) continue;
+    voteBuffer[key] = entries.filter(entry => now - entry.timestamp < VOTE_TTL_MS);
+    if (voteBuffer[key].length === 0) delete voteBuffer[key];
   }
-}, pingInterval);
-
-// Add validator status endpoint
-app.get("/api/validators", async (_req: Request, res: Response<ValidatorResponse[]>) => {
-  try {
-    const status = await collectValidatorStatus();
-    res.json(status);
-  } catch (err) {
-    logError(`Failed to collect validator status: ${err}`);
-    res.status(500).json([{ url: "error", error: "Failed to collect validator status" }]);
+}
+async function processQuorum() {
+  const startTime = Date.now();
+  for (const key of Object.keys(voteBuffer)) {
+    const entries = voteBuffer[key];
+    if (entries.length < QUORUM) continue;
+    const [site, timeStamp] = key.split(':');
+    const upCount = entries.filter((e) => e.status === 'UP').length;
+    const consensus = upCount >= entries.length - upCount ? 'UP' : 'DOWN';
+    if (processedConsensus.has(key)) continue;
+    consensusGauge.set({ url: site }, consensus === 'UP' ? 1 : 0);
+    await prisma.validatorLog.createMany({ data: entries.map((e) => ({ validatorId: e.validatorId, site, status: e.status, latency: e.latencyMs ?? 0, timestamp: new Date(timeStamp), })), });
+    await prisma.validatorLog.create({ data: { validatorId: 0, site, status: consensus, latency: 0, timestamp: new Date(timeStamp), }, });
+    const payload = { url: site, consensus, votes: entries, timeStamp };
+    try { await sendToTopic(KAFKA_TOPIC, payload); } catch (e) { logError(`Kafka publish failed: ${(e as Error).message}`); }
+    if (consensus === 'DOWN') {
+      for (const e of entries.filter((e) => e.status === 'DOWN')) {
+        const to = ALERT_EMAILS[e.location];
+        if (!to) continue;
+        try {
+          await mailTransporter.sendMail({ from: process.env.ALERT_FROM!, to, subject: `ALERT: ${site} DOWN in ${e.location}`, text: `Validator ${e.validatorId}@${e.location} reported DOWN at ${timeStamp}.`, });
+          info(`✉️ Alert sent to ${to}`);
+        } catch (mailErr) { logError(`Mail error: ${(mailErr as Error).message}`); }
+      }
+    }
+    processedConsensus.add(key);
+    delete voteBuffer[key];
+    const processingTime = (Date.now() - startTime) / 1000;
+    voteLatencyHistogram.observe({ url: site }, processingTime);
   }
-});
-
-// Kafka + Alerts
-startAlertService(wss).catch((err: any) => {
-  logError(`Failed to start AlertService: ${err.stack || err}`);
-  process.exit(1);
-});
-
-// WebSocket logging
-wss.on("connection", (client: WebSocket) => {
-  info("WebSocket client connected");
-  client.on("message", (m: string) => info(`WS: ${m}`));
-  client.on("error", (e: Error) => logError(`WS error: ${e.message}`));
-});
+}
+async function startKafkaConsumer() {
+  const kafkaClient = new Kafka({ clientId: 'aggregator', brokers: kafkaBrokerList, logLevel: logLevel.INFO, });
+  const consumer = kafkaClient.consumer({ groupId: 'aggregator-group' });
+  await consumer.connect();
+  info('Aggregator connected to Kafka');
+  await consumer.subscribe({ topic: KAFKA_TOPIC, fromBeginning: false });
+  info('Subscribed to validator-logs topic');
+  await consumer.run({ eachMessage: async ({ message }) => {
+    try {
+      const payload = JSON.parse(message.value!.toString());
+      const key = `${payload.url}:${payload.timestamp}`;
+      if (processedConsensus.has(key)) return;
+      voteBuffer[key] = voteBuffer[key] || [];
+      voteBuffer[key].push({ validatorId: payload.validatorId, status: payload.status, weight: 1, latencyMs: payload.latencyMs, location: payload.location, timestamp: Date.now() });
+      voteCounter.inc({ status: payload.status });
+      voteLatencyHistogram.observe(payload.latencyMs / 1000);
+      if (voteBuffer[key].length >= QUORUM) { await processQuorum(); }
+    } catch (err) { logError(`Error processing Kafka message: ${(err as Error).message}`); }
+  }, });
+}
+startKafkaConsumer().catch((err) => { logError(`Failed to start Kafka consumer: ${err}`); process.exit(1); });
+setInterval(cleanupOldVotes, 60 * 1000);
+setInterval(() => { processQuorum().catch((e) => logError(`processQuorum crashed: ${(e as Error).message}`)); }, AGG_INTERVAL);
+// --- END QUORUM/KAFKA LOGIC ---
 
 // Start server
 server.listen(PORT, "0.0.0.0", () => {

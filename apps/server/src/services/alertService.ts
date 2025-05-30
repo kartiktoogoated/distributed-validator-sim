@@ -43,7 +43,7 @@ export async function startAlertService(wsServer: WebSocketServer): Promise<void
       return;
     }
 
-    const topic = process.env.VALIDATOR_STATUS_TOPIC ?? "validator-status";
+    const topic = process.env.KAFKA_TOPIC ?? "validator-logs";
     await consumer.subscribe({ topic, fromBeginning: false });
     info(`Subscribed to topic '${topic}'`);
 
@@ -63,7 +63,7 @@ export async function startAlertService(wsServer: WebSocketServer): Promise<void
           const payload = JSON.parse(message.value!.toString()) as {
             url: string;
             consensus: "UP" | "DOWN";
-            votes: Array<{
+            votes?: Array<{
               validatorId: number;
               status: "UP" | "DOWN";
               weight: number;
@@ -72,6 +72,11 @@ export async function startAlertService(wsServer: WebSocketServer): Promise<void
             }>;
             timeStamp: string;
           };
+
+          // Only process messages with a votes array
+          if (!Array.isArray(payload.votes)) {
+            return;
+          }
 
           // look up the user's email
           const siteRecord = await prisma.website.findUnique({
