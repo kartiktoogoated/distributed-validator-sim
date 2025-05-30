@@ -1,4 +1,3 @@
-# .github/workflows/ci.yml
 name: CI & Docker Build + Push
 
 on:
@@ -62,3 +61,11 @@ jobs:
           file: apps/server/src/services/aggregator/Dockerfile
           push: true
           tags: ${{ secrets.DOCKER_USERNAME }}/distributed-validator-aggregator:latest
+
+      - name: Build & push api-server image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          file: apps/server/src/services/api-server/Dockerfile
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/distributed-validator-api-server:latest
