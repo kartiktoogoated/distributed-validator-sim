@@ -27,7 +27,7 @@ app.get("/health", (_req: Request, res: Response) => {
 });
 
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({ server, path: "/api/ws" });
 
 // Mount the simulation router for coordination endpoints
 app.use("/api/simulate", createSimulationRouter(wss));
@@ -45,6 +45,21 @@ app.get("/api/consensus", async (_req: Request, res: Response) => {
   } catch (err) {
     logError(`Consensus endpoint error: ${err}`);
     res.status(500).json({ success: false, error: "Failed to fetch consensus" });
+  }
+});
+
+// Add REST endpoint for validator logs
+app.get("/api/logs", async (_req: Request, res: Response) => {
+  try {
+    const logs = await prisma.validatorLog.findMany({
+      where: { validatorId: { not: 0 } },
+      orderBy: { timestamp: "desc" },
+      take: 100
+    });
+    res.json({ success: true, logs });
+  } catch (err) {
+    logError(`Logs endpoint error: ${err}`);
+    res.status(500).json({ success: false, error: "Failed to fetch logs" });
   }
 });
 
@@ -208,7 +223,7 @@ async function startKafkaConsumer() {
       if (voteBuffer[key].length >= QUORUM) {
         await processQuorum();
       }
-    } catch (err) {
+  } catch (err) {
       logError(`Error processing Kafka message: ${(err as Error).message}`);
     }
   }, });

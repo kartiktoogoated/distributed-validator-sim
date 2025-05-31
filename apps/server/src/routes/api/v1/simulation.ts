@@ -101,7 +101,7 @@ export default function createSimulationRouter(
         }
       });
 
-      res.sendStatus(204);
+    res.sendStatus(204);
     } catch (err) {
       logError(`Gossip error: ${err}`);
       res.status(500).json({ success: false, error: "Failed to process gossip" });
@@ -124,8 +124,8 @@ export default function createSimulationRouter(
       res.json({ success: true, message: "Start command sent to all validators" });
     } else {
       // Validators should start their validation loop
-      startValidationLoop();
-      res.json({ success: true, message: "Validation loop started" });
+    startValidationLoop();
+    res.json({ success: true, message: "Validation loop started" });
     }
   });
 
@@ -145,8 +145,8 @@ export default function createSimulationRouter(
       res.json({ success: true, message: "Stop command sent to all validators" });
     } else {
       // Validators should stop their validation loop
-      stopValidationLoop();
-      res.json({ success: true, message: "Validation loop stopped" });
+    stopValidationLoop();
+    res.json({ success: true, message: "Validation loop stopped" });
     }
   });
 
@@ -154,7 +154,7 @@ export default function createSimulationRouter(
     try {
       // Only validators should run validation
       if (process.env.IS_AGGREGATOR !== "true") {
-        startValidationLoop();
+      startValidationLoop();
       }
       const sites = await prisma.website.findMany({ where: { paused: false } });
       const payloads = await Promise.all(
@@ -245,8 +245,8 @@ async function executeRoundForUrl(
   try {
     // Only propose to Raft if IS_AGGREGATOR is true and raftNode exists
     if (typeof raftNode !== 'undefined' && process.env.IS_AGGREGATOR === "true") {
-      raftNode.propose(payload);
-      info(`Raft propose successful for ${url}`);
+    raftNode.propose(payload);
+    info(`Raft propose successful for ${url}`);
     }
   } catch {
     info("Not Raft leader—skipping propose");
