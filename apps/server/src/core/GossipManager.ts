@@ -23,7 +23,7 @@ export class GossipManager {
   public async runGossipRounds(
     siteUrl: string,
     responseTime: number,
-    timeStamp: string
+    timestamp: string
   ): Promise<void> {
     for (let round = 1; round <= this.rounds; round++) {
       info(`Starting gossip round ${round} for ${siteUrl}`);
@@ -33,7 +33,7 @@ export class GossipManager {
           validator.gossip(
             siteUrl,
             responseTime,
-            timeStamp,
+            timestamp,
             this.location
           )
         )

@@ -12,6 +12,9 @@ import { Validator } from "../../core/Validator";
 import { info, error as logError } from "../../../utils/logger";
 import { register as promRegister } from "../../metrics";
 import prisma from "../../prismaClient";
+import createSimulationRouter from "../../routes/api/v1/simulation";
+import { WebSocketServer } from "ws";
+import http from "http";
 
 interface ValidatorStatus {
   validatorId: number;
@@ -85,6 +88,12 @@ app.get("/status", (_req: Request, res: Response<ValidatorStatus>) => {
   });
 });
 
+// Add mock Raft vote endpoint
+app.post('/api/raft/vote', (req, res) => {
+  info(`Received Raft vote request`);
+  res.status(200).send({ success: true });
+});
+
 // Function to get target URL from database
 async function getTargetUrl(): Promise<string> {
   const website = await prisma.website.findFirst({
@@ -114,7 +123,13 @@ setInterval(async () => {
   }
 }, pingInterval);
 
+const server = http.createServer(app);
+const wss = new WebSocketServer({ server });
+
+// Mount the simulation router for simulation coordination
+app.use("/api/simulate", createSimulationRouter(wss));
+
 // Start server
-app.listen(PORT, "0.0.0.0", () => {
+server.listen(PORT, "0.0.0.0", () => {
   info(`🧿 Validator ${validatorId} listening on ${PORT}`);
 }); 

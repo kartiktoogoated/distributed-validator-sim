@@ -15,6 +15,8 @@ import { kafkaBrokerList } from '../../config/kafkaConfig';
 import nodemailer from 'nodemailer';
 import { Kafka, logLevel } from "kafkajs";
 import prisma from "../../prismaClient";
+import createSimulationRouter from "../../routes/api/v1/simulation";
+import { WebSocketServer } from "ws";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -25,6 +27,26 @@ app.get("/health", (_req: Request, res: Response) => {
 });
 
 const server = http.createServer(app);
+const wss = new WebSocketServer({ server });
+
+// Mount the simulation router for coordination endpoints
+app.use("/api/simulate", createSimulationRouter(wss));
+
+// Add REST endpoint for consensus results
+app.get("/api/consensus", async (_req: Request, res: Response) => {
+  try {
+    // Get the latest consensus log for each site
+    const latestConsensus = await prisma.validatorLog.findMany({
+      where: { validatorId: 0 }, // 0 = aggregator consensus
+      orderBy: { timestamp: "desc" },
+      take: 20 // adjust as needed
+    });
+    res.json({ success: true, consensus: latestConsensus });
+  } catch (err) {
+    logError(`Consensus endpoint error: ${err}`);
+    res.status(500).json({ success: false, error: "Failed to fetch consensus" });
+  }
+});
 
 // --- BEGIN QUORUM/KAFKA LOGIC ---
 const voteCounter = new Counter({
@@ -71,23 +93,80 @@ function cleanupOldVotes() {
 async function processQuorum() {
   const startTime = Date.now();
   for (const key of Object.keys(voteBuffer)) {
+    // Defensive: skip malformed keys
+    if (!key.includes('__')) {
+      logError(`Malformed key in voteBuffer: ${key}`);
+      continue;
+    }
+    const [site, timestamp] = key.split('__');
+    if (!site || !timestamp) {
+      logError(`Malformed key in voteBuffer: ${key}`);
+      continue;
+    }
     const entries = voteBuffer[key];
     if (entries.length < QUORUM) continue;
-    const [site, timeStamp] = key.split(':');
     const upCount = entries.filter((e) => e.status === 'UP').length;
     const consensus = upCount >= entries.length - upCount ? 'UP' : 'DOWN';
     if (processedConsensus.has(key)) continue;
     consensusGauge.set({ url: site }, consensus === 'UP' ? 1 : 0);
-    await prisma.validatorLog.createMany({ data: entries.map((e) => ({ validatorId: e.validatorId, site, status: e.status, latency: e.latencyMs ?? 0, timestamp: new Date(timeStamp), })), });
-    await prisma.validatorLog.create({ data: { validatorId: 0, site, status: consensus, latency: 0, timestamp: new Date(timeStamp), }, });
-    const payload = { url: site, consensus, votes: entries, timeStamp };
+
+    // Ensure validators exist before creating logs
+    for (const entry of entries) {
+      await prisma.validator.upsert({
+        where: { id: entry.validatorId },
+        update: {},
+        create: { 
+          id: entry.validatorId,
+          location: entry.location || 'unknown'
+        }
+      });
+    }
+
+    // Ensure valid timestamps for database entries
+    const validEntries = entries.map((e) => ({
+      validatorId: e.validatorId,
+      site,
+      status: e.status,
+      latency: e.latencyMs ?? 0,
+      timestamp: new Date(e.timestamp)
+    }));
+
+    await prisma.validatorLog.createMany({ 
+      data: validEntries
+    });
+
+    // Create consensus log with validator ID 0 (aggregator)
+    const consensusTimestamp = new Date(timestamp);
+    if (isNaN(consensusTimestamp.getTime())) {
+      logError(`Invalid consensus timestamp: ${timestamp}`);
+      continue;
+    }
+    await prisma.validator.upsert({
+      where: { id: 0 },
+      update: {},
+      create: { 
+        id: 0,
+        location: 'aggregator'
+      }
+    });
+
+    await prisma.validatorLog.create({ 
+      data: { 
+        validatorId: 0, 
+        site, 
+        status: consensus, 
+        latency: 0, 
+        timestamp: consensusTimestamp
+      }
+    });
+    const payload = { url: site, consensus, votes: entries, timestamp };
     try { await sendToTopic(KAFKA_TOPIC, payload); } catch (e) { logError(`Kafka publish failed: ${(e as Error).message}`); }
     if (consensus === 'DOWN') {
       for (const e of entries.filter((e) => e.status === 'DOWN')) {
         const to = ALERT_EMAILS[e.location];
         if (!to) continue;
         try {
-          await mailTransporter.sendMail({ from: process.env.ALERT_FROM!, to, subject: `ALERT: ${site} DOWN in ${e.location}`, text: `Validator ${e.validatorId}@${e.location} reported DOWN at ${timeStamp}.`, });
+          await mailTransporter.sendMail({ from: process.env.ALERT_FROM!, to, subject: `ALERT: ${site} DOWN in ${e.location}`, text: `Validator ${e.validatorId}@${e.location} reported DOWN at ${timestamp}.`, });
           info(`✉️ Alert sent to ${to}`);
         } catch (mailErr) { logError(`Mail error: ${(mailErr as Error).message}`); }
       }
@@ -108,14 +187,30 @@ async function startKafkaConsumer() {
   await consumer.run({ eachMessage: async ({ message }) => {
     try {
       const payload = JSON.parse(message.value!.toString());
-      const key = `${payload.url}:${payload.timestamp}`;
+      // Normalize timestamp to the nearest second
+      const timestampMs = new Date(payload.timestamp).getTime();
+      const normalizedTimestamp = new Date(Math.floor(timestampMs / 1000) * 1000).toISOString();
+      const key = `${payload.url}__${normalizedTimestamp}`;
+
       if (processedConsensus.has(key)) return;
       voteBuffer[key] = voteBuffer[key] || [];
-      voteBuffer[key].push({ validatorId: payload.validatorId, status: payload.status, weight: 1, latencyMs: payload.latencyMs, location: payload.location, timestamp: Date.now() });
+      voteBuffer[key].push({
+        validatorId: payload.validatorId,
+        status: payload.status,
+        weight: 1,
+        latencyMs: payload.latencyMs,
+        location: payload.location,
+        timestamp: timestampMs
+      });
       voteCounter.inc({ status: payload.status });
       voteLatencyHistogram.observe(payload.latencyMs / 1000);
-      if (voteBuffer[key].length >= QUORUM) { await processQuorum(); }
-    } catch (err) { logError(`Error processing Kafka message: ${(err as Error).message}`); }
+
+      if (voteBuffer[key].length >= QUORUM) {
+        await processQuorum();
+      }
+    } catch (err) {
+      logError(`Error processing Kafka message: ${(err as Error).message}`);
+    }
   }, });
 }
 startKafkaConsumer().catch((err) => { logError(`Failed to start Kafka consumer: ${err}`); process.exit(1); });

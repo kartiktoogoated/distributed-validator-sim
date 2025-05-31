@@ -14,7 +14,7 @@ export interface GossipPayload {
   vote: Vote;
   validatorId: number;
   latencyMs: number;
-  timeStamp: string;
+  timestamp: string;
   location: string;
 }
 
@@ -136,7 +136,7 @@ export class Validator {
   public gossip(
     siteUrl: string,
     latencyMs: number,
-    timeStamp: string,
+    timestamp: string,
     location: string
   ): void {
     const vote = this.lastVotes.get(siteUrl);
@@ -145,12 +145,17 @@ export class Validator {
       return;
     }
 
+    // Ensure timestamp is a valid ISO string
+    const validTimestamp = (typeof timestamp === 'string' && !isNaN(new Date(timestamp).getTime()))
+      ? timestamp
+      : new Date().toISOString();
+
     const payload: GossipPayload = {
       site: siteUrl,
       vote,
       validatorId: this.id,
       latencyMs,
-      timeStamp,
+      timestamp: validTimestamp,
       location,
     };
 
@@ -168,12 +173,12 @@ export class Validator {
     });
   }
 
+  public getStatus(siteUrl: string): Vote | undefined {
+    return this.lastVotes.get(siteUrl);
+  }
+
   public receiveGossip(siteUrl: string, vote: Vote, from: number): void {
     this.lastVotes.set(siteUrl, vote);
     info(`🔄 Validator ${this.id} got gossip from ${from} for ${siteUrl}: ${vote.status}`);
-  }
-
-  public getStatus(siteUrl: string): Vote | undefined {
-    return this.lastVotes.get(siteUrl);
   }
 }

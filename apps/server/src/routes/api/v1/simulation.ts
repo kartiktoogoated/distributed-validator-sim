@@ -69,9 +69,27 @@ export default function createSimulationRouter(
 
   SimulationRouter.post("/gossip", async (req: Request, res: Response) => {
     try {
-      const { site, vote, validatorId, latencyMs, timeStamp, location } = req.body;
+      const { site, vote, validatorId, latencyMs, timestamp, location } = req.body;
       validatorInstance.receiveGossip(site, vote, validatorId);
       
+      // Ensure validator exists before creating log
+      await prisma.validator.upsert({
+        where: { id: validatorId },
+        update: {},
+        create: { 
+          id: validatorId,
+          location: location || 'unknown'
+        }
+      });
+
+      // Validate timestamp
+      const logTimestamp = new Date(timestamp);
+      if (isNaN(logTimestamp.getTime())) {
+        logError(`Invalid gossip timestamp: ${timestamp}`);
+        res.status(400).json({ success: false, error: "Invalid timestamp" });
+        return;
+      }
+
       // Save to database
       await prisma.validatorLog.create({
         data: {
@@ -79,7 +97,7 @@ export default function createSimulationRouter(
           site: site,
           status: vote.status,
           latency: latencyMs,
-          timestamp: new Date(timeStamp)
+          timestamp: logTimestamp
         }
       });
 
@@ -159,7 +177,7 @@ async function executeRoundForUrl(
   url: string;
   consensus: Status;
   votes: Array<{ validatorId: number; status: Status; weight: number }>;
-  timeStamp: string;
+  timestamp: string;
 }> {
   // Skip execution for aggregator
   if (process.env.IS_AGGREGATOR === "true") {
@@ -167,16 +185,16 @@ async function executeRoundForUrl(
       url,
       consensus: "UP",
       votes: [],
-      timeStamp: new Date().toISOString()
+      timestamp: new Date().toISOString()
     };
   }
 
   let voteResult: { vote: { status: Status; weight: number }; latency: number };
-  let timeStamp: string;
+  let timestamp: string;
 
   try {
     voteResult = await validatorInstance.checkWebsite(url);
-    timeStamp = new Date().toISOString();
+    timestamp = new Date().toISOString();
 
     info(`[Ping] Validator ${localValidatorId}@${localLocation} → ${url}: ${voteResult.vote.status} (${voteResult.latency}ms)`);
 
@@ -205,7 +223,7 @@ async function executeRoundForUrl(
     await new GossipManager([validatorInstance], GOSSIP_ROUNDS, localLocation).runGossipRounds(
       url,
       voteResult.latency,
-      timeStamp
+      timestamp
     );
   } catch (err: any) {
     logError(`GossipManager error for ${url}: ${err.stack || err}`);
@@ -221,12 +239,15 @@ async function executeRoundForUrl(
         weight: voteResult.vote.weight,
       },
     ],
-    timeStamp,
+    timestamp,
   };
 
   try {
-    raftNode.propose(payload);
-    info(`Raft propose successful for ${url}`);
+    // Only propose to Raft if IS_AGGREGATOR is true and raftNode exists
+    if (typeof raftNode !== 'undefined' && process.env.IS_AGGREGATOR === "true") {
+      raftNode.propose(payload);
+      info(`Raft propose successful for ${url}`);
+    }
   } catch {
     info("Not Raft leader—skipping propose");
   }

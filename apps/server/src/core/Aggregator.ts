@@ -1,4 +1,3 @@
-
 import dotenv from 'dotenv'
 dotenv.config();
 
@@ -160,7 +159,7 @@ async function startKafkaConsumer() {
           location: string; // Added location
         };
 
-        const key = `${payload.url}:${payload.timestamp}`;
+        const key = `${payload.url}__${payload.timestamp}`;
         
         // Skip if already processed
         if (processedConsensus.has(key)) {
@@ -206,14 +205,14 @@ app.post('/api/simulate/gossip', async (req: Request, res: Response) => {
     vote,
     fromId,
     latencyMs,
-    timeStamp,
+    timestamp,
     location,
   } = req.body as {
     site: string;
     vote: { status: "UP" | "DOWN"; weight: number };
     fromId: number;
     latencyMs: number;
-    timeStamp: string;
+    timestamp: string;
     location: string;
   };
 
@@ -221,7 +220,7 @@ app.post('/api/simulate/gossip', async (req: Request, res: Response) => {
     typeof site !== 'string' ||
     typeof fromId !== 'number' ||
     typeof latencyMs !== 'number' ||
-    typeof timeStamp !== 'string' ||
+    typeof timestamp !== 'string' ||
     typeof location !== 'string' ||
     !vote ||
     (vote.status !== 'UP' && vote.status !== 'DOWN')
@@ -229,7 +228,7 @@ app.post('/api/simulate/gossip', async (req: Request, res: Response) => {
     throw new AppError('Malformed gossip payload', 400);
   }
 
-  const key = `${site}:${timeStamp}`;
+  const key = `${site}__${timestamp}`;
   voteBuffer[key] = voteBuffer[key] || [];
 
   voteBuffer[key].push({
@@ -254,7 +253,7 @@ async function processQuorum() {
     const entries = voteBuffer[key];
     if (entries.length < QUORUM) continue;
 
-    const [site, timeStamp] = key.split(':');
+    const [site, timestamp] = key.split('__');
     const upCount = entries.filter((e) => e.status === 'UP').length;
     const consensus: 'UP' | 'DOWN' =
       upCount >= entries.length - upCount ? 'UP' : 'DOWN';
@@ -264,7 +263,7 @@ async function processQuorum() {
       continue;
     }
 
-    info(`✔️ Consensus for ${site}@${timeStamp}: ${consensus} (${upCount}/${entries.length} UP)`);
+    info(`✔️ Consensus for ${site}@${timestamp}: ${consensus} (${upCount}/${entries.length} UP)`);
 
     // Update consensus metric
     consensusGauge.set({ url: site }, consensus === 'UP' ? 1 : 0);
@@ -276,7 +275,7 @@ async function processQuorum() {
         site,
         status: e.status,
         latency: e.latencyMs ?? 0,  
-        timestamp: new Date(timeStamp),
+        timestamp: new Date(timestamp),
       })),
     });
     
@@ -286,12 +285,12 @@ async function processQuorum() {
         site,
         status: consensus,
         latency: 0,
-        timestamp: new Date(timeStamp),
+        timestamp: new Date(timestamp),
       },
     });
 
     // b) Broadcast WS
-    const payload = { url: site, consensus, votes: entries, timeStamp };
+    const payload = { url: site, consensus, votes: entries, timestamp };
     const msg = JSON.stringify(payload);
     wsServer.clients.forEach((c) => {
       if (c.readyState === c.OPEN) c.send(msg);
@@ -314,7 +313,7 @@ async function processQuorum() {
             from: process.env.ALERT_FROM!,
             to,
             subject: `ALERT: ${site} DOWN in ${e.location}`,
-            text: `Validator ${e.validatorId}@${e.location} reported DOWN at ${timeStamp}.`,
+            text: `Validator ${e.validatorId}@${e.location} reported DOWN at ${timestamp}.`,
           });
           info(`✉️ Alert sent to ${to}`);
         } catch (mailErr) {
