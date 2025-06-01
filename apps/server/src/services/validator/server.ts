@@ -56,7 +56,7 @@ const location = process.env.LOCATION || "unknown";
 const pingInterval = Number(process.env.PING_INTERVAL_MS) || 30000;
 
 const validator = new Validator(validatorId, location);
-let lastCheck: ValidatorStatus["lastCheck"] = null;
+let lastCheck: any = null;
 
 // Use correct Kafka env variable
 const kafkaBrokers = (process.env.KAFKA_BOOTSTRAP_SERVERS || "kafka:9092").split(",");
@@ -104,24 +104,6 @@ async function getTargetUrl(): Promise<string> {
   }
   return website.url;
 }
-
-// Start monitoring
-info(`🟢 Validator ${validatorId}@${location} starting...`);
-
-setInterval(async () => {
-  try {
-    const targetUrl = await getTargetUrl();
-    const { vote, latency } = await validator.checkWebsite(targetUrl);
-    lastCheck = {
-      vote,
-      latency,
-      timestamp: new Date().toISOString()
-    };
-    info(`Check result for ${targetUrl}: ${vote.status === "UP" ? "✅" : "❌"} (${latency}ms)`);
-  } catch (err) {
-    logError(`Check failed: ${err}`);
-  }
-}, pingInterval);
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });

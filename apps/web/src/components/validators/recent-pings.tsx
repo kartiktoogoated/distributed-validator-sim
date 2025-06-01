@@ -110,8 +110,6 @@ const RecentPings: React.FC<RecentPingsProps> = ({ validatorId }) => {
                       <>
                         <span>{ping.latency}ms</span>
                         <span>•</span>
-                        <span>Validator {ping.validatorId}</span>
-                        <span>•</span>
                         <span>{ping.location}</span>
                         <span>•</span>
                         <span>{formatTime(ping.timestamp)}</span>

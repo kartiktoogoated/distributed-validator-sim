@@ -99,21 +99,23 @@ const CustomTooltip = ({
 
 export interface PingChartProps {
   isStarted: boolean
+  validatorId: number | null
 }
 
-const PingChart: React.FC<PingChartProps> = ({ isStarted }) => {
+const PingChart: React.FC<PingChartProps> = ({ isStarted, validatorId }) => {
   const [data, setData] = useState<MinuteBucket[]>([])
   const wsRef = useRef<WebSocket>()
 
   // 1) initial load once:
   useEffect(() => {
     const loadHistory = async () => {
-      const now = Date.now()
+      if (!validatorId) return;
+      const now = Date.now();
       if (historyCache && now - historyCacheTime < 5_000) {
         const slice = historyCache
-          .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+          .sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
           .slice(-60)
-          .map((log) => ({
+          .map((log: any) => ({
             formattedTime: formatLabel(log.timestamp),
             pingTime: log.latency === 0 ? null : log.latency,
             isDown: log.latency === 0,
@@ -125,31 +127,16 @@ const PingChart: React.FC<PingChartProps> = ({ isStarted }) => {
         return
       }
       try {
-        // Load data from all validators
-        const [validator1Res, validator2Res] = await Promise.all([
-          fetch('/api/logs?validatorId=1'),
-          fetch('/api/logs?validatorId=2')
-        ])
-        
-        if (validator1Res.status === 429 || validator2Res.status === 429) return
-        
-        const [validator1Data, validator2Data] = await Promise.all([
-          validator1Res.json(),
-          validator2Res.json()
-        ])
-
-        const allLogs = [
-          ...(validator1Data.success ? validator1Data.logs : []),
-          ...(validator2Data.success ? validator2Data.logs : [])
-        ]
-
-        historyCache = allLogs
-        historyCacheTime = now
-        
+        const res = await fetch(`/api/logs?validatorId=${validatorId}`);
+        if (res.status === 429) return;
+        const data = await res.json();
+        const allLogs = data.success ? data.logs : [];
+        historyCache = allLogs;
+        historyCacheTime = now;
         const slice = allLogs
-          .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+          .sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
           .slice(-60)
-          .map((log) => ({
+          .map((log: any) => ({
             formattedTime: formatLabel(log.timestamp),
             pingTime: log.latency === 0 ? null : log.latency,
             isDown: log.latency === 0,
@@ -164,37 +151,23 @@ const PingChart: React.FC<PingChartProps> = ({ isStarted }) => {
     }
 
     loadHistory()
-  }, [])
+  }, [validatorId])
 
   // 2) polling only when started
   useEffect(() => {
-    if (!isStarted) return
+    if (!isStarted || !validatorId) return;
     const id = setInterval(async () => {
       try {
-        const [validator1Res, validator2Res] = await Promise.all([
-          fetch('/api/logs?validatorId=1'),
-          fetch('/api/logs?validatorId=2')
-        ])
-        
-        if (validator1Res.status === 429 || validator2Res.status === 429) return
-        
-        const [validator1Data, validator2Data] = await Promise.all([
-          validator1Res.json(),
-          validator2Res.json()
-        ])
-
-        const allLogs = [
-          ...(validator1Data.success ? validator1Data.logs : []),
-          ...(validator2Data.success ? validator2Data.logs : [])
-        ]
-
-        historyCache = allLogs
-        historyCacheTime = Date.now()
-        
+        const res = await fetch(`/api/logs?validatorId=${validatorId}`);
+        if (res.status === 429) return;
+        const data = await res.json();
+        const allLogs = data.success ? data.logs : [];
+        historyCache = allLogs;
+        historyCacheTime = Date.now();
         const slice = allLogs
-          .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+          .sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
           .slice(-60)
-          .map((log) => ({
+          .map((log: any) => ({
             formattedTime: formatLabel(log.timestamp),
             pingTime: log.latency === 0 ? null : log.latency,
             isDown: log.latency === 0,
@@ -206,9 +179,9 @@ const PingChart: React.FC<PingChartProps> = ({ isStarted }) => {
       } catch (e) {
         console.error('Failed to load logs', e)
       }
-    }, 30_000)
-    return () => clearInterval(id)
-  }, [isStarted])
+    }, 30_000);
+    return () => clearInterval(id);
+  }, [isStarted, validatorId])
 
   // 3) websocket only updates UI when started
   useEffect(() => {

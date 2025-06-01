@@ -38,15 +38,8 @@ interface LogEntry {
   timestamp: string
 }
 
-interface ConsensusEntry {
-  site: string;
-  status: 'UP' | 'DOWN';
-  timestamp: string;
-}
-
 const ValidatorDashboard: React.FC = () => {
   const [isStarted, setIsStarted] = useState(false)
-  const [validators, setValidators] = useState<{ id: number, location: string }[]>([])
   const [validatorId, setValidatorId] = useState<number | null>(null)
   const { toast } = useToast()
   const skipFirstToggle = useRef(true)
@@ -63,7 +56,6 @@ const ValidatorDashboard: React.FC = () => {
 
   const totalMessages = useRef(0)
   const totalUpPercent = useRef(0)
-  const [consensus, setConsensus] = useState<ConsensusEntry[]>([])
 
   // Get validator IDs on mount
   useEffect(() => {
@@ -71,7 +63,6 @@ const ValidatorDashboard: React.FC = () => {
       .then(res => res.json())
       .then(data => {
         if (data.success && data.validators && data.validators.length > 0) {
-          setValidators(data.validators)
           setValidatorId(data.validators[0].id)
         }
       })
@@ -255,23 +246,6 @@ const ValidatorDashboard: React.FC = () => {
     setIsStarted((prev) => !prev)
   }
 
-  // Fetch consensus when validatorId changes
-  useEffect(() => {
-    if (!validatorId) return;
-    fetch(`/api/consensus`)
-      .then(res => res.json())
-      .then(data => {
-        if (data.success && data.consensus) {
-          setConsensus(data.consensus.map((c: any) => ({
-            site: c.site,
-            status: c.status,
-            timestamp: c.timestamp
-          })))
-        }
-      })
-      .catch(() => setConsensus([]))
-  }, [validatorId])
-
   return (
     <DashboardLayout userType="validator">
       <Routes>
@@ -284,22 +258,6 @@ const ValidatorDashboard: React.FC = () => {
                   <h1 className="text-3xl font-bold tracking-tight">
                     Validator Dashboard
                   </h1>
-                  {validators.length > 0 && (
-                    <div className="flex items-center gap-2 mt-2">
-                      <span className="text-muted-foreground">Validator:</span>
-                      <select
-                        className="border rounded px-2 py-1 bg-background text-foreground"
-                        value={validatorId ?? ''}
-                        onChange={e => setValidatorId(Number(e.target.value))}
-                      >
-                        {validators.map(v => (
-                          <option key={v.id} value={v.id}>
-                            {v.id} ({v.location})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
                 </div>
                 <div className="flex gap-2">
                   <Button onClick={fetchLogs} variant="outline" disabled={!validatorId}>
@@ -414,38 +372,7 @@ const ValidatorDashboard: React.FC = () => {
                         </CardDescription>
                       </CardHeader>
                       <CardContent className="pl-2">
-                        <PingChart isStarted={isStarted} />
-                      </CardContent>
-                    </Card>
-
-                    <Card className="md:col-span-2">
-                      <CardHeader>
-                        <CardTitle>Consensus Status</CardTitle>
-                        <CardDescription>
-                          Latest consensus for each site
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr>
-                              <th className="text-left">Site</th>
-                              <th>Status</th>
-                              <th>Timestamp</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {consensus.length === 0 ? (
-                              <tr><td colSpan={3} className="text-center text-muted-foreground">No consensus data</td></tr>
-                            ) : consensus.map((c, i) => (
-                              <tr key={i}>
-                                <td>{c.site}</td>
-                                <td className={c.status === 'UP' ? 'text-green-500' : 'text-red-500'}>{c.status}</td>
-                                <td>{new Date(c.timestamp).toLocaleString()}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                        <PingChart isStarted={isStarted} validatorId={validatorId} />
                       </CardContent>
                     </Card>
 
