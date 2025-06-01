@@ -29,9 +29,6 @@ interface MinuteBucket {
   location?: string
 }
 
-let historyCache: LogEntry[] | null = null
-let historyCacheTime = 0
-
 const formatLabel = (iso: string) => {
   const d = new Date(iso)
   const hh = String(d.getHours()).padStart(2, '0')
@@ -105,14 +102,15 @@ export interface PingChartProps {
 const PingChart: React.FC<PingChartProps> = ({ isStarted, validatorId }) => {
   const [data, setData] = useState<MinuteBucket[]>([])
   const wsRef = useRef<WebSocket>()
+  const historyCacheRef = useRef<{logs: LogEntry[], time: number} | null>(null)
 
   // 1) initial load once:
   useEffect(() => {
     const loadHistory = async () => {
       if (!validatorId) return;
       const now = Date.now();
-      if (historyCache && now - historyCacheTime < 5_000) {
-        const slice = historyCache
+      if (historyCacheRef.current && now - historyCacheRef.current.time < 5_000) {
+        const slice = historyCacheRef.current.logs
           .sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
           .slice(-60)
           .map((log: any) => ({
@@ -130,8 +128,7 @@ const PingChart: React.FC<PingChartProps> = ({ isStarted, validatorId }) => {
         if (res.status === 429) return;
         const data = await res.json();
         const allLogs = data.success ? data.logs : [];
-        historyCache = allLogs;
-        historyCacheTime = now;
+        historyCacheRef.current = { logs: allLogs, time: now };
         // Deduplicate logs
         const seen = new Set<string>();
         const uniqueLogs = allLogs.filter((log: any) => {
@@ -169,8 +166,7 @@ const PingChart: React.FC<PingChartProps> = ({ isStarted, validatorId }) => {
         if (res.status === 429) return;
         const data = await res.json();
         const allLogs = data.success ? data.logs : [];
-        historyCache = allLogs;
-        historyCacheTime = Date.now();
+        historyCacheRef.current = { logs: allLogs, time: Date.now() };
         // Deduplicate logs
         const seen = new Set<string>();
         const uniqueLogs = allLogs.filter((log: any) => {
@@ -200,12 +196,13 @@ const PingChart: React.FC<PingChartProps> = ({ isStarted, validatorId }) => {
 
   // 3) websocket only updates UI when started
   useEffect(() => {
+    if (!isStarted) return;
+    
     const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
     const socket = new WebSocket(`${proto}://${window.location.host}/api/ws`)
     wsRef.current = socket
 
     socket.onmessage = (ev) => {
-      if (!isStarted) return
       try {
         const msg = JSON.parse(ev.data) as {
           timeStamp: string
@@ -230,7 +227,10 @@ const PingChart: React.FC<PingChartProps> = ({ isStarted, validatorId }) => {
     }
 
     return () => {
-      socket.close()
+      if (wsRef.current) {
+        wsRef.current.close()
+        wsRef.current = undefined
+      }
     }
   }, [isStarted])
 

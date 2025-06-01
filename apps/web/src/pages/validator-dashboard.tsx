@@ -45,6 +45,7 @@ const ValidatorDashboard: React.FC = () => {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const isMounted = useRef(true)
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   const [dashboardData, setDashboardData] = useState<DashboardData>({
     uptime: 0,
@@ -58,10 +59,12 @@ const ValidatorDashboard: React.FC = () => {
 
   // Get validator IDs on mount
   useEffect(() => {
+    if (!isMounted.current) return;
+    
     fetch('/api/status')
       .then(res => res.json())
       .then(data => {
-        if (data.success && data.validators && data.validators.length > 0) {
+        if (isMounted.current && data.success && data.validators && data.validators.length > 0) {
           setValidatorId(data.validators[0].id)
         }
       })
@@ -79,6 +82,10 @@ const ValidatorDashboard: React.FC = () => {
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current)
       reconnectTimeoutRef.current = null
+    }
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current)
+      pollIntervalRef.current = null
     }
   }
 
@@ -104,10 +111,13 @@ const ValidatorDashboard: React.FC = () => {
       console.error('WebSocket error', err)
       if (wsRef.current) {
         wsRef.current.close()
+        wsRef.current = null
       }
     }
 
     ws.onmessage = (event) => {
+      if (!isMounted.current) return;
+      
       try {
         const data = JSON.parse(event.data) as {
           url: string;
@@ -155,21 +165,22 @@ const ValidatorDashboard: React.FC = () => {
       const res = await fetch(`/api/logs?validatorId=${validatorId}`)
       if (!res.ok) throw new Error('Failed to fetch logs')
       const { logs }: { logs: LogEntry[] } = await res.json()
+      if (!isMounted.current) return;
+      
       const sorted = logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
       const count = sorted.length
       const upCount = sorted.filter((l) => l.status === 'UP').length
       const uptime = count ? Math.round((upCount / count) * 100) : 0
       const lastPing = sorted[0]?.timestamp || ''
-      if (isMounted.current) {
-        setDashboardData((prev) => ({
-          ...prev,
-          pingCount: count,
-          uptime,
-          lastPing,
-        }))
-        // If logs exist, set isStarted true
-        if (count > 0) setIsStarted(true)
-      }
+      
+      setDashboardData((prev) => ({
+        ...prev,
+        pingCount: count,
+        uptime,
+        lastPing,
+      }))
+      // If logs exist, set isStarted true
+      if (count > 0) setIsStarted(true)
     } catch (err: any) {
       console.error('Failed to fetch logs', err)
     }
@@ -181,14 +192,13 @@ const ValidatorDashboard: React.FC = () => {
     initWebSocket()
     if (isStarted) fetchLogs()
 
-    let pollId: NodeJS.Timeout | null = null
     if (isStarted) {
-      pollId = setInterval(fetchLogs, 60_000) // 60000ms
+      pollIntervalRef.current = setInterval(fetchLogs, 60_000) // 60000ms
     }
+    
     return () => {
       isMounted.current = false
       cleanup()
-      if (pollId) clearInterval(pollId)
     }
   }, [isStarted])
 
@@ -240,6 +250,14 @@ const ValidatorDashboard: React.FC = () => {
         setIsStarted((prev) => !prev)
       })
   }, [isStarted, toast, validatorId])
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      isMounted.current = false
+      cleanup()
+    }
+  }, [])
 
   const toggleValidator = () => {
     setIsStarted((prev) => !prev)
@@ -406,7 +424,7 @@ const ValidatorDashboard: React.FC = () => {
                 </CardContent>
               </Card>
 
-              {/* You can re-add “System Stats” cards here if needed, since tabs are removed */}
+              {/* You can re-add "System Stats" cards here if needed, since tabs are removed */}
             </div>
           }
         />

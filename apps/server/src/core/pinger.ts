@@ -43,16 +43,14 @@ async function pollAndGossip() {
   for (const { url } of sites) {
     try {
       // 1) ping
-      const start = Date.now();
       const vote = await validator.checkWebsite(url);
-      const latency = Date.now() - start;
       const timestamp = new Date().toISOString();
 
       // 2) gossip full payload out to all peers
-      await validator.gossip(url, latency, timestamp, myLocation);
+      await validator.gossip(url, vote.latency, timestamp, myLocation);
 
       info(
-        `Validator ${myValidatorId} pinged ${url}: ${vote.vote.status} (${latency}ms) @ ${myLocation}`
+        `Validator ${myValidatorId} pinged ${url}: ${vote.vote.status} (${vote.latency}ms) @ ${myLocation}`
       );
     } catch (siteErr) {
       logError(

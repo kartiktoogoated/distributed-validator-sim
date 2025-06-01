@@ -74,10 +74,21 @@ export class Validator {
     try {
       const res = await ping.promise.probe(address, { timeout: 2, min_reply: 1 });
       info(`Raw ICMP Result: ${JSON.stringify(res)}`);
-      const icmpTime = typeof res.time === 'string' ? parseFloat(res.time) : res.time;
-      if (res.alive && typeof icmpTime === 'number' && icmpTime > 0) {
-        icmpStatus = "UP";
-        icmpLatency = icmpTime;
+      
+      // Get latency from the ping result
+      let pingTime = 0;
+      if (Array.isArray(res.times) && res.times.length > 0) {
+        // Use the first successful ping time
+        pingTime = res.times[0];
+      } else if (typeof res.time === 'number') {
+        pingTime = res.time;
+      } else if (typeof res.time === 'string') {
+        pingTime = parseFloat(res.time);
+      }
+
+      if (res.alive && pingTime > 0) {
+        icmpStatus = "UP" as Status;
+        icmpLatency = pingTime;
       }
     } catch (err: any) {
       logError(`ICMP ping error for ${origin}: ${err.message}`);
@@ -101,13 +112,6 @@ export class Validator {
     const finalStatus: Status = httpStatus;
     const reportedLatency = finalStatus === "UP" ? icmpLatency : 0;
 
-    // Skip first ping
-    if (!skipFirstPingForSite.has(origin)) {
-      skipFirstPingForSite.add(origin);
-      info(`Skipped first ping for ${origin} (DNS warm-up)`);
-      return { vote: this.recordVote(origin, finalStatus, 1), latency: reportedLatency };
-    }
-
     // Send to Kafka
     try {
       await sendToTopic("validator-logs", {
@@ -124,7 +128,7 @@ export class Validator {
       });
 
       info(`✅ Validator ${this.id}@${this.location} → ${origin}`);
-      info(`   └─ ICMP ${icmpStatus === "UP" ? "🟢" : "🔴"}: ${icmpLatency}ms`);
+      info(`   └─ ICMP ${icmpStatus === ("UP" as Status) ? "🟢" : "🔴"}: ${icmpLatency}ms`);
       info(`   └─ HTTP ${httpCode ?? "ERR"}: ${httpStatus}`);
       info(`   └─ Final: ${finalStatus} (Reported: ${reportedLatency}ms)`);
     } catch (err: any) {
