@@ -20,6 +20,9 @@ import { register as promRegister } from "../../metrics";
 const app = express();
 const PORT = Number(process.env.PORT) || 3004;
 
+// Trust proxy for rate limiting behind Docker
+app.set('trust proxy', 1);
+
 app.use(helmet());
 app.use(cors({ origin: process.env.ALLOWED_ORIGINS?.split(',') || ["http://localhost:5173"], credentials: true }));
 app.use(express.json());
