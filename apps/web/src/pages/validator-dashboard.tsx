@@ -40,6 +40,7 @@ interface LogEntry {
 
 const ValidatorDashboard: React.FC = () => {
   const [isStarted, setIsStarted] = useState(false)
+  const [validators, setValidators] = useState<{ id: number, location: string }[]>([])
   const [validatorId, setValidatorId] = useState<number | null>(null)
   const { toast } = useToast()
   const skipFirstToggle = useRef(true)
@@ -57,15 +58,14 @@ const ValidatorDashboard: React.FC = () => {
   const totalMessages = useRef(0)
   const totalUpPercent = useRef(0)
 
-  // Get validator ID and status on mount
+  // Get validator IDs on mount
   useEffect(() => {
     fetch('/api/status')
       .then(res => res.json())
       .then(data => {
-        if (data.validatorId) {
-          setValidatorId(data.validatorId)
-          // If status is UP, set isStarted true
-          if (data.status === 'UP') setIsStarted(true)
+        if (data.success && data.validators && data.validators.length > 0) {
+          setValidators(data.validators)
+          setValidatorId(data.validators[0].id)
         }
       })
       .catch(err => {
@@ -153,7 +153,7 @@ const ValidatorDashboard: React.FC = () => {
 
   // Fetch logs function with error handling
   const fetchLogs = async () => {
-    if (!isMounted.current) return;
+    if (!isMounted.current || !validatorId) return;
     try {
       const res = await fetch(`/api/logs?validatorId=${validatorId}`)
       if (!res.ok) throw new Error('Failed to fetch logs')
@@ -260,9 +260,22 @@ const ValidatorDashboard: React.FC = () => {
                   <h1 className="text-3xl font-bold tracking-tight">
                     Validator Dashboard
                   </h1>
-                  <p className="text-muted-foreground">
-                    {validatorId === null ? '' : `Validator ${validatorId}`}
-                  </p>
+                  {validators.length > 0 && (
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="text-muted-foreground">Validator:</span>
+                      <select
+                        className="border rounded px-2 py-1 bg-background text-foreground"
+                        value={validatorId ?? ''}
+                        onChange={e => setValidatorId(Number(e.target.value))}
+                      >
+                        {validators.map(v => (
+                          <option key={v.id} value={v.id}>
+                            {v.id} ({v.location})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
                 <div className="flex gap-2">
                   <Button onClick={fetchLogs} variant="outline" disabled={!validatorId}>

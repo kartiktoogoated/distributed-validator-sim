@@ -91,9 +91,11 @@ services:
       context: .
       dockerfile: apps/server/src/services/api-server/Dockerfile
     ports:
-      - "3004:3000"
+      - "3004:3004"
     env_file:
       - .env.api-server
+    environment:
+      - PORT=3004
     depends_on:
       - db
       - kafka

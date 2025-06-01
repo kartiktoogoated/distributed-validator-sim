@@ -8,13 +8,14 @@ export default function createStatusRouter(ws: WebSocketServer) {
   const router = express.Router();
 
   router.get("/", async (req: Request, res: Response): Promise<any> => {
+    info("Received /api/status request"); // Debug log
     try {
-      // Find the first validator in the database
-      const validator = await prisma.validator.findFirst();
-      if (!validator) {
+      // Find all real validators (id != 0)
+      const validators = await prisma.validator.findMany({ where: { id: { not: 0 } } });
+      if (!validators || validators.length === 0) {
         return res.status(404).json({
           success: false,
-          message: "No validator found in database"
+          message: "No real validators found in database"
         });
       }
       // Fetch the first non-paused website
@@ -25,7 +26,7 @@ export default function createStatusRouter(ws: WebSocketServer) {
       // const vote = await validatorInstance.checkWebsite(targetUrl);
       return res.json({
         success: true,
-        validatorId: validator.id,
+        validators: validators.map(v => ({ id: v.id, location: v.location })),
         url: targetUrl,
         // status: vote?.vote.status, // Uncomment if you want live status
         // weight: vote?.vote.weight, // Uncomment if you want live weight

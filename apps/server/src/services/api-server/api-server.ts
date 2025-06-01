@@ -18,7 +18,7 @@ import { globalRateLimiter } from "../../middlewares/rateLimiter";
 import { register as promRegister } from "../../metrics";
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = Number(process.env.PORT) || 3004;
 
 app.use(helmet());
 app.use(cors({ origin: process.env.ALLOWED_ORIGINS?.split(',') || ["http://localhost:5173"], credentials: true }));
