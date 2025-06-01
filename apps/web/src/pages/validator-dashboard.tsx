@@ -9,7 +9,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { useToast } from '@/hooks/use-toast'
@@ -355,71 +354,59 @@ const ValidatorDashboard: React.FC = () => {
                 </Card>
               </div>
 
-              <Tabs defaultValue="performance" className="space-y-4">
-                <TabsList>
-                  <TabsTrigger value="performance">Performance</TabsTrigger>
-                  <TabsTrigger value="map">Location Map</TabsTrigger>
-                  <TabsTrigger value="system">System Stats</TabsTrigger>
-                </TabsList>
+              {/* Performance Section */}
+              <Card className="md:col-span-2">
+                <CardHeader>
+                  <CardTitle>Ping Response Time</CardTitle>
+                  <CardDescription>
+                    Average response time over the last 24 hours
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="pl-2">
+                  <PingChart isStarted={isStarted} validatorId={validatorId} />
+                </CardContent>
+              </Card>
 
-                <TabsContent value="performance" className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <Card className="md:col-span-2">
-                      <CardHeader>
-                        <CardTitle>Ping Response Time</CardTitle>
-                        <CardDescription>
-                          Average response time over the last 24 hours
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="pl-2">
-                        <PingChart isStarted={isStarted} validatorId={validatorId} />
-                      </CardContent>
-                    </Card>
+              {/* Recent Pings Section */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Recent Pings</CardTitle>
+                  <CardDescription>
+                    Latest website pings from your validator
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <RecentPings validatorId={validatorId} />
+                </CardContent>
+              </Card>
 
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Recent Pings</CardTitle>
-                        <CardDescription>
-                          Latest website pings from your validator
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <RecentPings validatorId={validatorId} />
-                      </CardContent>
-                    </Card>
+              {/* Performance Score Section */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Performance Score</CardTitle>
+                  <CardDescription>
+                    Based on response time, uptime, and consistency
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ValidatorStats score={dashboardData.performanceScore} />
+                </CardContent>
+              </Card>
 
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Performance Score</CardTitle>
-                        <CardDescription>
-                          Based on response time, uptime, and consistency
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <ValidatorStats score={dashboardData.performanceScore} />
-                      </CardContent>
-                    </Card>
-                  </div>
-                </TabsContent>
+              {/* Validator Location Section */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Validator Location</CardTitle>
+                  <CardDescription>
+                    Your validator's geographic position in the network
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ValidatorMap />
+                </CardContent>
+              </Card>
 
-                <TabsContent value="map">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Validator Location</CardTitle>
-                      <CardDescription>
-                        Your validator's geographic position in the network
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <ValidatorMap />
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-
-                <TabsContent value="system" className="space-y-4">
-                  {/* …system stats panels unchanged… */}
-                </TabsContent>
-              </Tabs>
+              {/* You can re-add “System Stats” cards here if needed, since tabs are removed */}
             </div>
           }
         />

@@ -23,6 +23,7 @@ model ValidatorLog {
   status      String
   latency     Int      
   timestamp   DateTime  @default(now())
+  location    String?
 
   validator   Validator @relation(fields: [validatorId], references: [id])
 }

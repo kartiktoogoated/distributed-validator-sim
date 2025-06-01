@@ -39,11 +39,12 @@ const RecentPings: React.FC<RecentPingsProps> = ({ validatorId }) => {
       if (!res.ok) return;
       const data = await res.json();
       const logs = data.success ? data.logs : [];
-      // Deduplicate logs by site, timestamp, and validatorId
+      // Deduplicate logs by site, timestamp, validatorId, and location, and filter out validatorId === 0
       const seen = new Set();
       const uniqueLogs = [];
       for (const log of logs) {
-        const key = `${log.site}-${log.timestamp}-${log.validatorId}`;
+        if (log.validatorId === 0) continue;
+        const key = `${log.site}-${log.timestamp}-${log.validatorId}-${log.location}`;
         if (!seen.has(key)) {
           seen.add(key);
           uniqueLogs.push(log);

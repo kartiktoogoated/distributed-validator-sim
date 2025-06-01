@@ -9,11 +9,11 @@ ENV PNPM_HOME="/root/.local/share/pnpm"
 ENV PATH="${PNPM_HOME}:${PATH}"
 RUN corepack enable && corepack prepare pnpm@10.10.0 --activate
 
-# Install deps
+# Install dependencies
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
-# Copy source
+# Copy source code
 COPY . .
 
 # Generate Prisma Client
@@ -28,17 +28,18 @@ RUN pnpm turbo run build --filter=distributed-validator-sim...
 FROM node:18-alpine AS runner
 WORKDIR /app
 
-# Install required tools
 RUN apk add --no-cache openssl curl
 
-# Copy output from builder
+# Copy app output from builder
 COPY --from=builder /app .
 
-# Set runtime environment
+# Copy Prisma schema and migrations
+COPY --from=builder /app/packages/db/prisma /app/packages/db/prisma
+
+# Set environment variables
 ENV NODE_ENV=production
 ENV IS_VALIDATOR=true
 
-# Expose port
 EXPOSE 3000
 
 # Note: CMD is overridden by `command:` in docker-compose.yml

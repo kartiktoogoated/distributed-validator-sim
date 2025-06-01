@@ -2,6 +2,7 @@
 FROM node:18-alpine AS builder
 WORKDIR /app
 
+# Install curl for health checks or debugging
 RUN apk add --no-cache curl
 
 # Enable PNPM without prompts
@@ -9,14 +10,14 @@ ENV PNPM_HOME="/root/.local/share/pnpm"
 ENV PATH="${PNPM_HOME}:${PATH}"
 RUN corepack enable && corepack prepare pnpm@10.10.0 --activate
 
-# Install deps
+# Install dependencies
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
-# Copy source
+# Copy source code
 COPY . .
 
-# Generate Prisma Client
+# Generate Prisma Client (runs in builder stage)
 WORKDIR /app/packages/db
 RUN pnpm install --frozen-lockfile && pnpm prisma generate
 
@@ -28,17 +29,19 @@ RUN pnpm turbo run build --filter=distributed-validator-sim...
 FROM node:18-alpine AS runner
 WORKDIR /app
 
-# Install required tools
+# Install curl and openssl
 RUN apk add --no-cache openssl curl
 
-# Copy output from builder
+# Copy built app from builder
 COPY --from=builder /app .
 
-# Set runtime environment
-ENV NODE_ENV=production
-ENV IS_AGGREGATOR=true
+# Important: Copy Prisma schema and migrations folder (if using migrations)
+COPY --from=builder /app/packages/db/prisma /app/packages/db/prisma
 
-# Expose port
+# Default environment variables
+ENV NODE_ENV=production
+
+# Expose port (same for validator and aggregator)
 EXPOSE 3000
 
-# Note: CMD is overridden by `command:` in docker-compose.yml
+# Note: Entry point is set via docker-compose.yml 'command'

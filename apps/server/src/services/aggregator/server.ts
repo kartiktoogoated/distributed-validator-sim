@@ -59,7 +59,16 @@ app.get("/api/logs", async (_req: Request, res: Response) => {
     const logs = await prisma.validatorLog.findMany({
       where: { validatorId: { not: 0 } },
       orderBy: { timestamp: "desc" },
-      take: 100
+      take: 100,
+      select: {
+        id: true,
+        validatorId: true,
+        site: true,
+        status: true,
+        latency: true,
+        timestamp: true,
+        location: true,
+      },
     });
     res.json({ success: true, logs });
   } catch (err) {
@@ -143,12 +152,21 @@ async function processQuorum() {
     }
 
     // Ensure valid timestamps for database entries
-    const validEntries = entries.map((e) => ({
+    // Deduplicate entries by (validatorId, site, timestamp)
+    const uniqueMap = new Map();
+    for (const e of entries) {
+      const key = `${e.validatorId}-${site}-${new Date(e.timestamp).toISOString()}`;
+      if (!uniqueMap.has(key)) {
+        uniqueMap.set(key, e);
+      }
+    }
+    const validEntries = Array.from(uniqueMap.values()).map((e) => ({
       validatorId: e.validatorId,
       site,
       status: e.status,
       latency: e.latencyMs ?? 0,
-      timestamp: new Date(e.timestamp)
+      timestamp: new Date(e.timestamp),
+      location: e.location || 'unknown',
     }));
 
     await prisma.validatorLog.createMany({ 
