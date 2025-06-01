@@ -73,20 +73,6 @@ app.get("/api/websites", async (_req, res) => {
   }
 });
 
-app.get("/api/status", async (_req, res) => {
-  try {
-    const latestLogs = await prisma.validatorLog.findMany({
-      take: 10,
-      orderBy: { timestamp: "desc" },
-      include: { validator: true },
-    });
-    res.json({ success: true, logs: latestLogs });
-  } catch (err) {
-    logError(`Failed to fetch status: ${err}`);
-    res.status(500).json({ success: false, error: "Failed to fetch status" });
-  }
-});
-
 // WebSocket setup
 wss.on("connection", (client) => {
   info("WebSocket client connected");

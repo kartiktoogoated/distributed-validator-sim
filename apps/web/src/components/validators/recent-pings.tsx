@@ -33,6 +33,7 @@ const RecentPings: React.FC<RecentPingsProps> = ({ isStarted }) => {
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const load = async () => {
+    if (!isStarted) return; // Only load logs if validator is started
     try {
       // Load data from all validators
       const [validator1Res, validator2Res] = await Promise.all([
@@ -52,8 +53,19 @@ const RecentPings: React.FC<RecentPingsProps> = ({ isStarted }) => {
         ...(validator2Data.success ? validator2Data.logs : [])
       ];
 
+      // Deduplicate logs by site, timestamp, and validatorId
+      const seen = new Set();
+      const uniqueLogs = [];
+      for (const log of allLogs) {
+        const key = `${log.site}-${log.timestamp}-${log.validatorId}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          uniqueLogs.push(log);
+        }
+      }
+
       // Sort by timestamp and take the most recent 15
-      const sortedLogs = allLogs
+      const sortedLogs = uniqueLogs
         .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
         .slice(0, 15);
 
@@ -66,13 +78,19 @@ const RecentPings: React.FC<RecentPingsProps> = ({ isStarted }) => {
 
   // 1) initial load on mount
   useEffect(() => {
-    load();
-  }, []);
+    if (isStarted) {
+      setLoading(true);
+      load();
+    } else {
+      setPings([]);
+      setLoading(false);
+    }
+  }, [isStarted]);
 
   // 2) start/stop polling when isStarted changes
   useEffect(() => {
     if (isStarted) {
-      intervalRef.current = setInterval(load, 10_000);
+      intervalRef.current = setInterval(load, 60_000); // 60000ms timeout
     } else if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
@@ -87,55 +105,57 @@ const RecentPings: React.FC<RecentPingsProps> = ({ isStarted }) => {
   return (
     <ScrollArea className="h-[240px]">
       <div className="space-y-3">
-        {loading &&
-          Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="flex items-center justify-between p-2">
-              <div className="space-y-2">
-                <Skeleton className="h-4 w-[120px]" />
-                <Skeleton className="h-3 w-[80px]" />
-              </div>
-              <Skeleton className="h-6 w-[60px]" />
-            </div>
-          ))}
-
-        {!loading &&
-          pings.map((ping) => (
-            <div
-              key={ping.id}
-              className={cn(
-                'flex items-center justify-between p-2 rounded-md border border-transparent',
-                'animate-in fade-in-0 slide-in-from-top-5 duration-300',
-                Date.now() - new Date(ping.timestamp).getTime() < 10_000
-                  ? 'border-primary/20 bg-primary/5'
-                  : ''
-              )}
-              style={{ animationDelay: `${100 * (pings.indexOf(ping) % 5)}ms` }}
-            >
-              <div>
-                <div className="font-medium">{ping.site}</div>
-                <div className="text-sm text-muted-foreground flex items-center gap-2">
-                  {ping.status === 'UP' ? (
-                    <>
-                      <span>{ping.latency}ms</span>
-                      <span>•</span>
-                      <span>Validator {ping.validatorId}</span>
-                      <span>•</span>
-                      <span>{ping.location}</span>
-                      <span>•</span>
-                      <span>{formatTime(ping.timestamp)}</span>
-                    </>
-                  ) : (
-                    <span className="text-destructive">Connection failed</span>
-                  )}
+        {!isStarted ? null : (
+          loading ? (
+            Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="flex items-center justify-between p-2">
+                <div className="space-y-2">
+                  <Skeleton className="h-4 w-[120px]" />
+                  <Skeleton className="h-3 w-[80px]" />
                 </div>
+                <Skeleton className="h-6 w-[60px]" />
               </div>
-              <Badge
-                variant={ping.status === 'UP' ? 'default' : 'destructive'}
+            ))
+          ) : (
+            pings.map((ping) => (
+              <div
+                key={ping.id}
+                className={cn(
+                  'flex items-center justify-between p-2 rounded-md border border-transparent',
+                  'animate-in fade-in-0 slide-in-from-top-5 duration-300',
+                  Date.now() - new Date(ping.timestamp).getTime() < 10_000
+                    ? 'border-primary/20 bg-primary/5'
+                    : ''
+                )}
+                style={{ animationDelay: `${100 * (pings.indexOf(ping) % 5)}ms` }}
               >
-                {ping.status === 'UP' ? 'OK' : 'Error'}
-              </Badge>
-            </div>
-          ))}
+                <div>
+                  <div className="font-medium">{ping.site}</div>
+                  <div className="text-sm text-muted-foreground flex items-center gap-2">
+                    {ping.status === 'UP' ? (
+                      <>
+                        <span>{ping.latency}ms</span>
+                        <span>•</span>
+                        <span>Validator {ping.validatorId}</span>
+                        <span>•</span>
+                        <span>{ping.location}</span>
+                        <span>•</span>
+                        <span>{formatTime(ping.timestamp)}</span>
+                      </>
+                    ) : (
+                      <span className="text-destructive">Connection failed</span>
+                    )}
+                  </div>
+                </div>
+                <Badge
+                  variant={ping.status === 'UP' ? 'default' : 'destructive'}
+                >
+                  {ping.status === 'UP' ? 'OK' : 'Error'}
+                </Badge>
+              </div>
+            ))
+          )
+        )}
       </div>
     </ScrollArea>
   );

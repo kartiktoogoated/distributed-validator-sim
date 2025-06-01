@@ -151,8 +151,7 @@ const ValidatorDashboard: React.FC = () => {
 
   // Fetch logs function with error handling
   const fetchLogs = async () => {
-    if (!isMounted.current) return
-
+    if (!isMounted.current || !isStarted) return; // Only fetch logs if started
     try {
       const res = await fetch('/api/logs')
       if (!res.ok) throw new Error('Failed to fetch logs')
@@ -185,13 +184,18 @@ const ValidatorDashboard: React.FC = () => {
   useEffect(() => {
     isMounted.current = true
     initWebSocket()
-    fetchLogs()
+    if (isStarted) fetchLogs()
 
+    let pollId: NodeJS.Timeout | null = null
+    if (isStarted) {
+      pollId = setInterval(fetchLogs, 60_000) // 60000ms
+    }
     return () => {
       isMounted.current = false
       cleanup()
+      if (pollId) clearInterval(pollId)
     }
-  }, [])
+  }, [isStarted])
 
   // Handle validator start/stop with better error handling
   useEffect(() => {
@@ -259,11 +263,11 @@ const ValidatorDashboard: React.FC = () => {
                     Validator Dashboard
                   </h1>
                   <p className="text-muted-foreground">
-                    {validatorId ? `Validator ${validatorId}` : 'Loading validator...'}
+                    {validatorId === null ? 'Loading validator...' : `Validator ${validatorId}`}
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  <Button onClick={fetchLogs} variant="outline">
+                  <Button onClick={fetchLogs} variant="outline" disabled={!isStarted}>
                     Reload
                   </Button>
                   <Button
