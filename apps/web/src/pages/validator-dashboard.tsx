@@ -38,6 +38,12 @@ interface LogEntry {
   timestamp: string
 }
 
+interface ConsensusEntry {
+  site: string;
+  status: 'UP' | 'DOWN';
+  timestamp: string;
+}
+
 const ValidatorDashboard: React.FC = () => {
   const [isStarted, setIsStarted] = useState(false)
   const [validators, setValidators] = useState<{ id: number, location: string }[]>([])
@@ -57,6 +63,7 @@ const ValidatorDashboard: React.FC = () => {
 
   const totalMessages = useRef(0)
   const totalUpPercent = useRef(0)
+  const [consensus, setConsensus] = useState<ConsensusEntry[]>([])
 
   // Get validator IDs on mount
   useEffect(() => {
@@ -248,6 +255,23 @@ const ValidatorDashboard: React.FC = () => {
     setIsStarted((prev) => !prev)
   }
 
+  // Fetch consensus when validatorId changes
+  useEffect(() => {
+    if (!validatorId) return;
+    fetch(`/api/consensus`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.consensus) {
+          setConsensus(data.consensus.map((c: any) => ({
+            site: c.site,
+            status: c.status,
+            timestamp: c.timestamp
+          })))
+        }
+      })
+      .catch(() => setConsensus([]))
+  }, [validatorId])
+
   return (
     <DashboardLayout userType="validator">
       <Routes>
@@ -391,6 +415,37 @@ const ValidatorDashboard: React.FC = () => {
                       </CardHeader>
                       <CardContent className="pl-2">
                         <PingChart isStarted={isStarted} />
+                      </CardContent>
+                    </Card>
+
+                    <Card className="md:col-span-2">
+                      <CardHeader>
+                        <CardTitle>Consensus Status</CardTitle>
+                        <CardDescription>
+                          Latest consensus for each site
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr>
+                              <th className="text-left">Site</th>
+                              <th>Status</th>
+                              <th>Timestamp</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {consensus.length === 0 ? (
+                              <tr><td colSpan={3} className="text-center text-muted-foreground">No consensus data</td></tr>
+                            ) : consensus.map((c, i) => (
+                              <tr key={i}>
+                                <td>{c.site}</td>
+                                <td className={c.status === 'UP' ? 'text-green-500' : 'text-red-500'}>{c.status}</td>
+                                <td>{new Date(c.timestamp).toLocaleString()}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </CardContent>
                     </Card>
 

@@ -33,11 +33,16 @@ const wss = new WebSocketServer({ server, path: "/api/ws" });
 app.use("/api/simulate", createSimulationRouter(wss));
 
 // Add REST endpoint for consensus results
-app.get("/api/consensus", async (_req: Request, res: Response) => {
+app.get("/api/consensus", async (req: Request, res: Response) => {
   try {
+    const validatorId = req.query.validatorId ? Number(req.query.validatorId) : undefined;
+    const site = req.query.site ? String(req.query.site) : undefined;
+    const where: any = { validatorId: 0 };
+    if (validatorId !== undefined) where.validatorId = validatorId;
+    if (site) where.site = site;
     // Get the latest consensus log for each site
     const latestConsensus = await prisma.validatorLog.findMany({
-      where: { validatorId: 0 }, // 0 = aggregator consensus
+      where,
       orderBy: { timestamp: "desc" },
       take: 20 // adjust as needed
     });
