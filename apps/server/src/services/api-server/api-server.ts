@@ -11,7 +11,6 @@ import session from "express-session";
 import { info, error as logError } from "../../../utils/logger";
 import authRouter from "../../routes/api/v1/auth";
 import websiteRouter from "../../routes/api/v1/website";
-import createSimulationRouter from "../../routes/api/v1/simulation";
 import createStatusRouter from "../../routes/api/v1/status";
 import createLogsRouter from "../../routes/api/v1/logs";
 import SolanaRouter from "../../routes/api/v1/verify-wallet";
@@ -48,7 +47,6 @@ const wss = new WebSocketServer({ server, path: "/api/ws" });
 
 app.use("/api/auth", authRouter);
 app.use("/api", websiteRouter);
-app.use("/api/simulate", createSimulationRouter(wss));
 app.use("/api/status", createStatusRouter(wss));
 app.use("/api/logs", createLogsRouter());
 app.use('/api/auth', SolanaRouter);

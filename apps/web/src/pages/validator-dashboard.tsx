@@ -57,13 +57,15 @@ const ValidatorDashboard: React.FC = () => {
   const totalMessages = useRef(0)
   const totalUpPercent = useRef(0)
 
-  // Get validator ID on mount
+  // Get validator ID and status on mount
   useEffect(() => {
     fetch('/api/status')
       .then(res => res.json())
       .then(data => {
         if (data.validatorId) {
           setValidatorId(data.validatorId)
+          // If status is UP, set isStarted true
+          if (data.status === 'UP') setIsStarted(true)
         }
       })
       .catch(err => {
@@ -151,21 +153,16 @@ const ValidatorDashboard: React.FC = () => {
 
   // Fetch logs function with error handling
   const fetchLogs = async () => {
-    if (!isMounted.current || !isStarted) return; // Only fetch logs if started
+    if (!isMounted.current) return;
     try {
-      const res = await fetch('/api/logs')
+      const res = await fetch(`/api/logs?validatorId=${validatorId}`)
       if (!res.ok) throw new Error('Failed to fetch logs')
-      
       const { logs }: { logs: LogEntry[] } = await res.json()
-      const sorted = logs.sort(
-        (a, b) =>
-          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-      )
+      const sorted = logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
       const count = sorted.length
       const upCount = sorted.filter((l) => l.status === 'UP').length
       const uptime = count ? Math.round((upCount / count) * 100) : 0
       const lastPing = sorted[0]?.timestamp || ''
-
       if (isMounted.current) {
         setDashboardData((prev) => ({
           ...prev,
@@ -173,10 +170,11 @@ const ValidatorDashboard: React.FC = () => {
           uptime,
           lastPing,
         }))
+        // If logs exist, set isStarted true
+        if (count > 0) setIsStarted(true)
       }
     } catch (err: any) {
       console.error('Failed to fetch logs', err)
-      // Don't show toast for polling errors to avoid spam
     }
   }
 
@@ -263,21 +261,17 @@ const ValidatorDashboard: React.FC = () => {
                     Validator Dashboard
                   </h1>
                   <p className="text-muted-foreground">
-                    {validatorId === null ? 'Loading validator...' : `Validator ${validatorId}`}
+                    {validatorId === null ? '' : `Validator ${validatorId}`}
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  <Button onClick={fetchLogs} variant="outline" disabled={!isStarted}>
+                  <Button onClick={fetchLogs} variant="outline" disabled={!validatorId}>
                     Reload
                   </Button>
                   <Button
                     onClick={toggleValidator}
                     disabled={!validatorId}
-                    className={
-                      isStarted
-                        ? 'bg-red-500 hover:bg-red-600'
-                        : 'bg-green-500 hover:bg-green-600'
-                    }
+                    className={isStarted ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'}
                   >
                     {isStarted ? 'Stop Validator' : 'Start Validator'}
                   </Button>
@@ -395,7 +389,7 @@ const ValidatorDashboard: React.FC = () => {
                         </CardDescription>
                       </CardHeader>
                       <CardContent>
-                        <RecentPings isStarted={isStarted} />
+                        <RecentPings validatorId={validatorId} />
                       </CardContent>
                     </Card>
 

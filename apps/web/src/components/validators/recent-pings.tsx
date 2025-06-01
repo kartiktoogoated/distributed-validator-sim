@@ -16,7 +16,7 @@ interface LogEntry {
 }
 
 interface RecentPingsProps {
-  isStarted: boolean;
+  validatorId: number | null;
 }
 
 const formatTime = (timestamp: string) => {
@@ -27,48 +27,32 @@ const formatTime = (timestamp: string) => {
   return `${Math.floor(seconds / 3600)}h ago`;
 };
 
-const RecentPings: React.FC<RecentPingsProps> = ({ isStarted }) => {
+const RecentPings: React.FC<RecentPingsProps> = ({ validatorId }) => {
   const [pings, setPings] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const load = async () => {
-    if (!isStarted) return; // Only load logs if validator is started
+    if (!validatorId) return;
     try {
-      // Load data from all validators
-      const [validator1Res, validator2Res] = await Promise.all([
-        fetch('/api/logs?validatorId=1'),
-        fetch('/api/logs?validatorId=2')
-      ]);
-      
-      if (!validator1Res.ok || !validator2Res.ok) return;
-      
-      const [validator1Data, validator2Data] = await Promise.all([
-        validator1Res.json(),
-        validator2Res.json()
-      ]);
-
-      const allLogs = [
-        ...(validator1Data.success ? validator1Data.logs : []),
-        ...(validator2Data.success ? validator2Data.logs : [])
-      ];
-
+      const res = await fetch(`/api/logs?validatorId=${validatorId}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const logs = data.success ? data.logs : [];
       // Deduplicate logs by site, timestamp, and validatorId
       const seen = new Set();
       const uniqueLogs = [];
-      for (const log of allLogs) {
+      for (const log of logs) {
         const key = `${log.site}-${log.timestamp}-${log.validatorId}`;
         if (!seen.has(key)) {
           seen.add(key);
           uniqueLogs.push(log);
         }
       }
-
       // Sort by timestamp and take the most recent 15
       const sortedLogs = uniqueLogs
         .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
         .slice(0, 15);
-
       setPings(sortedLogs);
       setLoading(false);
     } catch (e) {
@@ -76,36 +60,26 @@ const RecentPings: React.FC<RecentPingsProps> = ({ isStarted }) => {
     }
   };
 
-  // 1) initial load on mount
   useEffect(() => {
-    if (isStarted) {
+    if (validatorId) {
       setLoading(true);
       load();
+      intervalRef.current = setInterval(load, 60_000);
     } else {
       setPings([]);
       setLoading(false);
-    }
-  }, [isStarted]);
-
-  // 2) start/stop polling when isStarted changes
-  useEffect(() => {
-    if (isStarted) {
-      intervalRef.current = setInterval(load, 60_000); // 60000ms timeout
-    } else if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
     }
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
       }
     };
-  }, [isStarted]);
+  }, [validatorId]);
 
   return (
     <ScrollArea className="h-[240px]">
       <div className="space-y-3">
-        {!isStarted ? null : (
+        {!validatorId ? null : (
           loading ? (
             Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="flex items-center justify-between p-2">
