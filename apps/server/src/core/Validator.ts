@@ -69,14 +69,15 @@ export class Validator {
     }
 
     // ICMP ping
-    const icmpStart = Date.now();
     let icmpLatency = 0;
     let icmpStatus: Status = "DOWN";
     try {
-      const res = await ping.promise.probe(address, { timeout: 2 });
-      if (res.alive) {
+      const res = await ping.promise.probe(address, { timeout: 2, min_reply: 1 });
+      info(`Raw ICMP Result: ${JSON.stringify(res)}`);
+      const icmpTime = typeof res.time === 'string' ? parseFloat(res.time) : res.time;
+      if (res.alive && typeof icmpTime === 'number' && icmpTime > 0) {
         icmpStatus = "UP";
-        icmpLatency = Date.now() - icmpStart;
+        icmpLatency = icmpTime;
       }
     } catch (err: any) {
       logError(`ICMP ping error for ${origin}: ${err.message}`);

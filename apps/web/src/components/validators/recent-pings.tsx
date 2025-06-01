@@ -39,12 +39,12 @@ const RecentPings: React.FC<RecentPingsProps> = ({ validatorId }) => {
       if (!res.ok) return;
       const data = await res.json();
       const logs = data.success ? data.logs : [];
-      // Deduplicate logs by site, timestamp, validatorId, and location, and filter out validatorId === 0
+      // Deduplicate logs by site, timestamp, and validatorId, and filter out validatorId === 0
       const seen = new Set();
       const uniqueLogs = [];
       for (const log of logs) {
         if (log.validatorId === 0) continue;
-        const key = `${log.site}-${log.timestamp}-${log.validatorId}-${log.location}`;
+        const key = `${log.site}-${log.timestamp}-${log.validatorId}`;
         if (!seen.has(key)) {
           seen.add(key);
           uniqueLogs.push(log);
@@ -110,8 +110,6 @@ const RecentPings: React.FC<RecentPingsProps> = ({ validatorId }) => {
                     {ping.status === 'UP' ? (
                       <>
                         <span>{ping.latency}ms</span>
-                        <span>•</span>
-                        <span>{ping.location}</span>
                         <span>•</span>
                         <span>{formatTime(ping.timestamp)}</span>
                       </>

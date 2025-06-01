@@ -121,7 +121,6 @@ const PingChart: React.FC<PingChartProps> = ({ isStarted, validatorId }) => {
             isDown: log.latency === 0,
             site: log.site,
             validatorId: log.validatorId,
-            location: log.location
           }))
         setData(slice)
         return
@@ -133,7 +132,16 @@ const PingChart: React.FC<PingChartProps> = ({ isStarted, validatorId }) => {
         const allLogs = data.success ? data.logs : [];
         historyCache = allLogs;
         historyCacheTime = now;
-        const slice = allLogs
+        // Deduplicate logs
+        const seen = new Set<string>();
+        const uniqueLogs = allLogs.filter((log: any) => {
+          if (log.validatorId === 0) return false;
+          const key = `${log.site}-${log.timestamp}-${log.validatorId}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        const slice = uniqueLogs
           .sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
           .slice(-60)
           .map((log: any) => ({
@@ -142,7 +150,6 @@ const PingChart: React.FC<PingChartProps> = ({ isStarted, validatorId }) => {
             isDown: log.latency === 0,
             site: log.site,
             validatorId: log.validatorId,
-            location: log.location
           }))
         setData(slice)
       } catch (e) {
@@ -164,7 +171,16 @@ const PingChart: React.FC<PingChartProps> = ({ isStarted, validatorId }) => {
         const allLogs = data.success ? data.logs : [];
         historyCache = allLogs;
         historyCacheTime = Date.now();
-        const slice = allLogs
+        // Deduplicate logs
+        const seen = new Set<string>();
+        const uniqueLogs = allLogs.filter((log: any) => {
+          if (log.validatorId === 0) return false;
+          const key = `${log.site}-${log.timestamp}-${log.validatorId}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        const slice = uniqueLogs
           .sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
           .slice(-60)
           .map((log: any) => ({
@@ -173,7 +189,6 @@ const PingChart: React.FC<PingChartProps> = ({ isStarted, validatorId }) => {
             isDown: log.latency === 0,
             site: log.site,
             validatorId: log.validatorId,
-            location: log.location
           }))
         setData(slice)
       } catch (e) {
