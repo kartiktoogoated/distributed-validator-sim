@@ -54,10 +54,15 @@ app.get("/api/consensus", async (req: Request, res: Response) => {
 });
 
 // Add REST endpoint for validator logs
-app.get("/api/logs", async (_req: Request, res: Response) => {
+app.get("/api/logs", async (req: Request, res: Response) => {
   try {
+    const validatorId = req.query.validatorId ? Number(req.query.validatorId) : undefined;
+    const where: any = { validatorId: { not: 0 } };
+    if (validatorId !== undefined && !isNaN(validatorId)) {
+      where.validatorId = validatorId;
+    }
     const logs = await prisma.validatorLog.findMany({
-      where: { validatorId: { not: 0 } },
+      where,
       orderBy: { timestamp: "desc" },
       take: 100,
       select: {

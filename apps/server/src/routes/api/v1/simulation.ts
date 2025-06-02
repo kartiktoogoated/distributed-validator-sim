@@ -17,7 +17,23 @@ const PING_INTERVAL_MS = Number(process.env.PING_INTERVAL_MS) || 60_000;
 const peerAddresses = (process.env.PEERS ?? "")
   .split(",")
   .map((h) => h.trim().replace(/^https?:\/\//, "").replace(/\/+$/, ""))
-  .filter(Boolean);
+  .filter(Boolean)
+  .map(peer => {
+    // Ensure peer has a port number
+    if (!peer.includes(':')) {
+      warn(`Peer ${peer} missing port number, defaulting to 3000`);
+      return `${peer}:3000`;
+    }
+    return peer;
+  });
+
+// Validate peer addresses
+peerAddresses.forEach(peer => {
+  const [host, port] = peer.split(':');
+  if (!host || !port || isNaN(Number(port))) {
+    warn(`Invalid peer address format: ${peer}, expected format: host:port`);
+  }
+});
 
 const localValidatorId = Number(process.env.VALIDATOR_ID);
 if (isNaN(localValidatorId)) throw new Error("VALIDATOR_ID must be a number");
@@ -27,9 +43,26 @@ const localLocation = process.env.LOCATION || "unknown";
 const validatorInstance = new Validator(localValidatorId);
 validatorInstance.peers = peerAddresses;
 
-const raftNode = new RaftNode(localValidatorId, peerAddresses, (committed) => {
-  info(`Raft committed: ${JSON.stringify(committed)}`);
-});
+let raftNode: RaftNode | undefined;
+if (process.env.IS_AGGREGATOR === "true") {
+  raftNode = new RaftNode(localValidatorId, peerAddresses, (committed) => {
+    info(`Raft committed: ${JSON.stringify(committed)}`);
+  });
+}
+
+// Add type for vote buffer
+interface VoteEntry {
+  validatorId: number;
+  status: 'UP' | 'DOWN';
+  weight: number;
+  latencyMs: number;
+  location: string;
+  timestamp: number;
+}
+
+declare global {
+  var voteBuffer: Record<string, VoteEntry[]>;
+}
 
 export default function createSimulationRouter(
   wsServer: WebSocketServer
@@ -48,7 +81,7 @@ export default function createSimulationRouter(
       try {
         const sites = await prisma.website.findMany({ where: { paused: false } });
         await Promise.all(
-          sites.map((w) =>
+          sites.map((w: any) =>
             executeRoundForUrl(wsServer, w.url).catch((err) =>
               logError(`Loop round failed for ${w.url}: ${err}`)
             )
@@ -70,9 +103,47 @@ export default function createSimulationRouter(
   SimulationRouter.post("/gossip", async (req: Request, res: Response) => {
     try {
       const { site, vote, validatorId, latencyMs, timestamp, location } = req.body;
-      validatorInstance.receiveGossip(site, vote, validatorId);
       
-      // Ensure validator exists before creating log
+      // Only aggregator processes quorum
+      if (process.env.IS_AGGREGATOR === "true") {
+        const key = `${site}__${timestamp}`;
+        global.voteBuffer = global.voteBuffer || {};
+        global.voteBuffer[key] = global.voteBuffer[key] || [];
+        
+        global.voteBuffer[key].push({
+          validatorId,
+          status: vote.status,
+          weight: vote.weight,
+          latencyMs,
+          location,
+          timestamp: Date.now()
+        });
+
+        // Process quorum if we have enough votes
+        const QUORUM = Math.ceil((process.env.VALIDATOR_IDS || '').split(',').length / 2);
+        if (global.voteBuffer[key].length >= QUORUM) {
+          const upCount = global.voteBuffer[key].filter(e => e.status === 'UP').length;
+          const consensus = upCount >= global.voteBuffer[key].length - upCount ? 'UP' : 'DOWN';
+          
+          // Create consensus log
+          await prisma.validatorLog.create({
+            data: {
+              validatorId: 0, // Aggregator ID
+              site,
+              status: consensus,
+              latency: 0,
+              timestamp: new Date(timestamp)
+            }
+          });
+
+          info(`✔️ Consensus for ${site}@${timestamp}: ${consensus} (${upCount}/${global.voteBuffer[key].length} UP)`);
+          
+          // Clear processed votes
+          delete global.voteBuffer[key];
+        }
+      }
+      
+      // All validators (including aggregator) should log the vote
       await prisma.validator.upsert({
         where: { id: validatorId },
         update: {},
@@ -101,7 +172,7 @@ export default function createSimulationRouter(
         }
       });
 
-    res.sendStatus(204);
+      res.sendStatus(204);
     } catch (err) {
       logError(`Gossip error: ${err}`);
       res.status(500).json({ success: false, error: "Failed to process gossip" });
@@ -158,7 +229,7 @@ export default function createSimulationRouter(
       }
       const sites = await prisma.website.findMany({ where: { paused: false } });
       const payloads = await Promise.all(
-        sites.map((w) => executeRoundForUrl(wsServer, w.url))
+        sites.map((w: any) => executeRoundForUrl(wsServer, w.url))
       );
       res.json({ success: true, payloads });
     } catch (err: any) {

@@ -68,39 +68,70 @@ export class Validator {
       return { vote: this.recordVote(origin, "DOWN", 1), latency: 0 };
     }
 
-    // ICMP ping
+    // ICMP ping with retries
     let icmpLatency = 0;
     let icmpStatus: Status = "DOWN";
-    try {
-      const res = await ping.promise.probe(address, { timeout: 2, min_reply: 1 });
-      info(`Raw ICMP Result: ${JSON.stringify(res)}`);
-      
-      // Get latency from the ping result
-      let pingTime = 0;
-      if (Array.isArray(res.times) && res.times.length > 0) {
-        // Use the first successful ping time
-        pingTime = res.times[0];
-      } else if (typeof res.time === 'number') {
-        pingTime = res.time;
-      } else if (typeof res.time === 'string') {
-        pingTime = parseFloat(res.time);
-      }
+    const maxPingRetries = 3;
+    const pingRetryDelay = 1000; // 1 second
 
-      if (res.alive && pingTime > 0) {
-        icmpStatus = "UP" as Status;
-        icmpLatency = pingTime;
+    for (let retryCount = 0; retryCount < maxPingRetries; retryCount++) {
+      try {
+        const res = await ping.promise.probe(address, { timeout: 2, min_reply: 1 });
+        info(`Raw ICMP Result (attempt ${retryCount + 1}/${maxPingRetries}): ${JSON.stringify(res)}`);
+
+        let pingTime = 0;
+        if (Array.isArray(res.times) && res.times.length > 0) {
+          pingTime = res.times[0];
+        } else if (typeof res.time === 'number') {
+          pingTime = res.time;
+        } else if (typeof res.time === 'string') {
+          pingTime = parseFloat(res.time);
+        }
+
+        if (res.alive) {
+          if (pingTime && pingTime > 0) {
+            icmpStatus = "UP";
+            icmpLatency = pingTime;
+            info(`✅ ICMP ping successful: ${pingTime}ms (packet loss: ${res.packetLoss}%)`);
+            break; // Success, exit retry loop
+          } else {
+            const reason = res.packetLoss === "100.000" 
+              ? "100% packet loss" 
+              : res.output?.includes("unknown") 
+                ? "unknown response time" 
+                : "0ms response time";
+            warn(`⚠️ ICMP ping returned 0ms on attempt ${retryCount + 1}/${maxPingRetries} for ${origin}`);
+            warn(`   └─ Reason: ${reason}`);
+            warn(`   └─ Raw output: ${res.output}`);
+            if (retryCount < maxPingRetries - 1) {
+              warn(`   └─ Retrying in ${pingRetryDelay}ms...`);
+              await new Promise(resolve => setTimeout(resolve, pingRetryDelay));
+              continue; // Try again
+            }
+          }
+        } else {
+          warn(`❌ ICMP ping failed: ${res.output}`);
+        }
+      } catch (err: any) {
+        logError(`ICMP ping error for ${origin} (attempt ${retryCount + 1}/${maxPingRetries}): ${err.message}`);
+        if (retryCount < maxPingRetries - 1) {
+          warn(`   └─ Retrying in ${pingRetryDelay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, pingRetryDelay));
+          continue; // Try again
+        }
       }
-    } catch (err: any) {
-      logError(`ICMP ping error for ${origin}: ${err.message}`);
     }
 
     // HTTP check
     let httpStatus: Status = "DOWN";
     let httpCode: number | null = null;
+    let httpLatency = 0;
     const controller = new AbortController();
     const to = setTimeout(() => controller.abort(), 3000);
     try {
+      const start = Date.now();
       const r = await fetch(siteUrl, { signal: controller.signal });
+      httpLatency = Date.now() - start;
       httpCode = r.status;
       httpStatus = r.status >= 200 && r.status < 400 ? "UP" : "DOWN";
     } catch {
@@ -109,12 +140,21 @@ export class Validator {
       clearTimeout(to);
     }
 
-    const finalStatus: Status = httpStatus;
-    const reportedLatency = finalStatus === "UP" ? icmpLatency : 0;
+    // Site is considered DOWN only if both ICMP and HTTP are DOWN
+    const finalStatus: Status = (icmpStatus === "DOWN" && httpStatus === "DOWN") ? "DOWN" : "UP";
+
+    let reportedLatency = 0;
+    if (finalStatus === "UP") {
+      reportedLatency = icmpLatency > 0 ? icmpLatency : httpLatency;
+      if (reportedLatency === 0) {
+        logError(`Both ICMP and HTTP latency are 0ms after ${maxPingRetries} retries. Skipping log.`);
+        return { vote: this.recordVote(origin, finalStatus, 1), latency: 0 };
+      }
+    }
 
     // Send to Kafka
     try {
-      await sendToTopic("validator-logs", {
+      const kafkaPayload = {
         validatorId: this.id,
         url: origin,
         status: finalStatus,
@@ -125,12 +165,20 @@ export class Validator {
         icmpStatus,
         httpStatus,
         httpCode,
-      });
+        failureReason: finalStatus === "DOWN" 
+          ? "Both ICMP and HTTP checks failed"
+          : undefined
+      };
+
+      await sendToTopic("validator-logs", kafkaPayload);
 
       info(`✅ Validator ${this.id}@${this.location} → ${origin}`);
       info(`   └─ ICMP ${icmpStatus === ("UP" as Status) ? "🟢" : "🔴"}: ${icmpLatency}ms`);
       info(`   └─ HTTP ${httpCode ?? "ERR"}: ${httpStatus}`);
       info(`   └─ Final: ${finalStatus} (Reported: ${reportedLatency}ms)`);
+      if (finalStatus === "DOWN") {
+        warn(`   └─ Failure Reason: ${kafkaPayload.failureReason}`);
+      }
     } catch (err: any) {
       logError(`Kafka send failed: ${err.message}`);
     }
@@ -165,16 +213,37 @@ export class Validator {
     };
 
     info(`Gossiping ${siteUrl} (${vote.status}) to ${this.peers.length} peers`);
+    
+    // Add retry logic for each peer
     this.peers.forEach((peer) => {
-      fetch(`http://${peer}/api/simulate/gossip`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      })
-        .then(() => info(`🔗 Validator ${this.id} → ${peer}: ${vote.status}`))
-        .catch((err) =>
-          info(`❌ Validator ${this.id} → ${peer} failed: ${err.message}`)
-        );
+      const maxRetries = 3;
+      const retryDelay = 1000; // 1 second
+      
+      const attemptGossip = async (retryCount = 0) => {
+        try {
+          const response = await fetch(`http://${peer}/api/simulate/gossip`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+          }
+          
+          info(`🔗 Validator ${this.id} → ${peer}: ${vote.status}`);
+        } catch (error: unknown) {
+          const err = error as Error;
+          if (retryCount < maxRetries) {
+            warn(`Retry ${retryCount + 1}/${maxRetries} for ${peer} after error: ${err.message}`);
+            setTimeout(() => attemptGossip(retryCount + 1), retryDelay);
+          } else {
+            info(`❌ Validator ${this.id} → ${peer} failed after ${maxRetries} retries: ${err.message}`);
+          }
+        }
+      };
+      
+      attemptGossip();
     });
   }
 

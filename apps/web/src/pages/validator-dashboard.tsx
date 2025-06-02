@@ -172,12 +172,18 @@ const ValidatorDashboard: React.FC = () => {
       const upCount = sorted.filter((l) => l.status === 'UP').length
       const uptime = count ? Math.round((upCount / count) * 100) : 0
       const lastPing = sorted[0]?.timestamp || ''
+
+      // Calculate performance score from recent logs (last 10)
+      const recentLogs = sorted.slice(0, 10)
+      const recentUpCount = recentLogs.filter((l) => l.status === 'UP').length
+      const performanceScore = recentLogs.length ? Math.round((recentUpCount / recentLogs.length) * 100) : 0
       
       setDashboardData((prev) => ({
         ...prev,
         pingCount: count,
         uptime,
         lastPing,
+        performanceScore,
       }))
       // If logs exist, set isStarted true
       if (count > 0) setIsStarted(true)
