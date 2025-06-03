@@ -218,6 +218,14 @@ async function processQuorum() {
     const payload = { url: site, consensus, votes: uniqueVotes, timestamp };
     try { await sendToTopic(KAFKA_TOPIC, payload); } catch (e) { logError(`Kafka publish failed: ${(e as Error).message}`); }
     
+    // Broadcast consensus to all WebSocket clients for live dashboard
+    if (typeof wss !== 'undefined' && wss.clients) {
+      const msg = JSON.stringify(payload);
+      wss.clients.forEach((c) => {
+        if (c.readyState === c.OPEN) c.send(msg);
+      });
+    }
+    
     if (consensus === 'DOWN') {
       for (const e of uniqueVotes.filter((e) => e.status === 'DOWN')) {
         const to = ALERT_EMAILS[e.location];

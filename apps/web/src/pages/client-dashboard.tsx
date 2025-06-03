@@ -16,8 +16,9 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/hooks/use-toast'
-import { Plus, Globe, Activity, Clock, Zap, ExternalLink, Loader2 } from 'lucide-react'
+import { Plus, Globe, Activity, Clock, Zap, ExternalLink, Loader2, Users } from 'lucide-react'
 import { comingSoon } from '@/lib/utils'
+import LiveConsensusStatus from '@/components/ui/LiveConsensusStatus'
 
 // Lazy load components
 const SitesList = lazy(() => import('@/components/clients/sites-list'))
@@ -172,8 +173,11 @@ const ClientDashboard: React.FC = () => {
                 </Button>
               </div>
 
+              {/* Live Consensus Status */}
+              <LiveConsensusStatus />
+
               {/* stats */}
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
                 <Card>
                   <CardHeader className="flex justify-between pb-2">
                     <CardTitle className="text-sm">Websites</CardTitle>
@@ -219,6 +223,16 @@ const ClientDashboard: React.FC = () => {
                     <Button variant="ghost" size="sm" onClick={comingSoon}>
                       Node selection coming soon
                     </Button>
+                  </CardContent>
+                </Card>
+                {/* Consensus Status Card */}
+                <Card>
+                  <CardHeader className="flex justify-between pb-2">
+                    <CardTitle className="text-sm">Consensus Status</CardTitle>
+                    <Users className="h-4 w-4 text-muted-foreground" />
+                  </CardHeader>
+                  <CardContent>
+                    <LiveConsensusStatus compact />
                   </CardContent>
                 </Card>
               </div>
