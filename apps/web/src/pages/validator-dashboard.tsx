@@ -167,7 +167,17 @@ const ValidatorDashboard: React.FC = () => {
       const { logs }: { logs: LogEntry[] } = await res.json()
       if (!isMounted.current) return;
       
-      const sorted = logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      // Deduplicate logs by site, timestamp, and validatorId
+      const seen = new Set<string>();
+      const uniqueLogs = logs.filter(log => {
+        if (log.validatorId === 0) return false; // Skip aggregator logs
+        const key = `${log.site}-${log.timestamp}-${log.validatorId}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      const sorted = uniqueLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
       const count = sorted.length
       const upCount = sorted.filter((l) => l.status === 'UP').length
       const uptime = count ? Math.round((upCount / count) * 100) : 0
@@ -268,6 +278,14 @@ const ValidatorDashboard: React.FC = () => {
   const toggleValidator = () => {
     setIsStarted((prev) => !prev)
   }
+
+  // Handler to increment ping count when a new ping is detected
+  const handleNewPing = () => {
+    setDashboardData(prev => ({
+      ...prev,
+      pingCount: prev.pingCount + 1
+    }));
+  };
 
   return (
     <DashboardLayout userType="validator">
@@ -400,7 +418,7 @@ const ValidatorDashboard: React.FC = () => {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <RecentPings validatorId={validatorId} />
+                  <RecentPings validatorId={validatorId} onNewPing={() => handleNewPing()} />
                 </CardContent>
               </Card>
 

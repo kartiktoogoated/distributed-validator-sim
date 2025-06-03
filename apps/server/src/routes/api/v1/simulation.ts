@@ -110,6 +110,7 @@ export default function createSimulationRouter(
         global.voteBuffer = global.voteBuffer || {};
         global.voteBuffer[key] = global.voteBuffer[key] || [];
         
+        // Add vote to buffer
         global.voteBuffer[key].push({
           validatorId,
           status: vote.status,
@@ -121,25 +122,42 @@ export default function createSimulationRouter(
 
         // Process quorum if we have enough votes
         const QUORUM = Math.ceil((process.env.VALIDATOR_IDS || '').split(',').length / 2);
-        if (global.voteBuffer[key].length >= QUORUM) {
-          const upCount = global.voteBuffer[key].filter(e => e.status === 'UP').length;
-          const consensus = upCount >= global.voteBuffer[key].length - upCount ? 'UP' : 'DOWN';
-          
-          // Create consensus log
-          await prisma.validatorLog.create({
-            data: {
-              validatorId: 0, // Aggregator ID
-              site,
-              status: consensus,
-              latency: 0,
-              timestamp: new Date(timestamp)
-            }
-          });
+        const CONSENSUS_WINDOW_MS = 5000; // 5 second window for retries
+        
+        // Get the original timestamp from the key
+        const [_, voteTimestamp] = key.split('__');
+        const voteTime = new Date(voteTimestamp).getTime();
+        const now = Date.now();
+        
+        // Only process if we're past the consensus window
+        if (now - voteTime >= CONSENSUS_WINDOW_MS) {
+          if (global.voteBuffer[key].length >= QUORUM) {
+            const upCount = global.voteBuffer[key].filter(e => e.status === 'UP').length;
+            const consensus = upCount >= global.voteBuffer[key].length - upCount ? 'UP' : 'DOWN';
+            
+            // Create consensus log
+            await prisma.validatorLog.create({
+              data: {
+                validatorId: 0, // Aggregator ID
+                site,
+                status: consensus,
+                latency: 0,
+                timestamp: new Date(voteTimestamp)
+              }
+            });
 
-          info(`✔️ Consensus for ${site}@${timestamp}: ${consensus} (${upCount}/${global.voteBuffer[key].length} UP)`);
-          
-          // Clear processed votes
-          delete global.voteBuffer[key];
+            info(`✔️ Consensus for ${site}@${voteTimestamp}: ${consensus} (${upCount}/${global.voteBuffer[key].length} UP)`);
+            
+            // Clear processed votes
+            delete global.voteBuffer[key];
+          } else {
+            // If we're past the window and don't have quorum, log a warning
+            warn(`⚠️ No quorum reached for ${site}@${voteTimestamp} after ${CONSENSUS_WINDOW_MS}ms window (${global.voteBuffer[key].length}/${QUORUM} votes)`);
+            delete global.voteBuffer[key];
+          }
+        } else {
+          // Still within window, waiting for more votes
+          info(`⏳ Waiting for more votes for ${site}@${voteTimestamp} (${global.voteBuffer[key].length}/${QUORUM} votes, ${Math.round((CONSENSUS_WINDOW_MS - (now - voteTime))/1000)}s remaining)`);
         }
       }
       

@@ -124,6 +124,8 @@ services:
       - db
     networks:
       - raftnet
+    cap_add:
+      - NET_RAW
     command: >
       sh -c "
         echo '🕒 Waiting for DB...' &&
@@ -147,6 +149,8 @@ services:
       - db
     networks:
       - raftnet
+    cap_add:
+      - NET_RAW
     command: >
       sh -c "
         echo '🕒 Waiting for DB...' &&

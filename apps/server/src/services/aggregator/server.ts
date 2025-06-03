@@ -113,17 +113,29 @@ const mailTransporter = nodemailer.createTransport({
   secure: mailConfig.SMTP_SECURE,
   auth: { user: mailConfig.SMTP_USER, pass: mailConfig.SMTP_PASS },
 });
-const voteBuffer: Record<string, any[]> = {};
+const voteBuffer: Record<string, Map<number, any>> = {};
 const VOTE_TTL_MS = 5 * 60 * 1000;
+
 function cleanupOldVotes() {
   const now = Date.now();
   for (const key of Object.keys(voteBuffer)) {
-    const entries = voteBuffer[key];
-    if (entries.length === 0) continue;
-    voteBuffer[key] = entries.filter(entry => now - entry.timestamp < VOTE_TTL_MS);
-    if (voteBuffer[key].length === 0) delete voteBuffer[key];
+    const validatorVotes = voteBuffer[key];
+    if (validatorVotes.size === 0) {
+      delete voteBuffer[key];
+      continue;
+    }
+    // Clean up old votes for each validator
+    for (const [validatorId, vote] of validatorVotes.entries()) {
+      if (now - vote.timestamp > VOTE_TTL_MS) {
+        validatorVotes.delete(validatorId);
+      }
+    }
+    if (validatorVotes.size === 0) {
+      delete voteBuffer[key];
+    }
   }
 }
+
 async function processQuorum() {
   const startTime = Date.now();
   for (const key of Object.keys(voteBuffer)) {
@@ -137,15 +149,22 @@ async function processQuorum() {
       logError(`Malformed key in voteBuffer: ${key}`);
       continue;
     }
-    const entries = voteBuffer[key];
-    if (entries.length < QUORUM) continue;
-    const upCount = entries.filter((e) => e.status === 'UP').length;
-    const consensus = upCount >= entries.length - upCount ? 'UP' : 'DOWN';
+
+    const validatorVotes = voteBuffer[key];
+    const uniqueVotes = Array.from(validatorVotes.values());
+    
+    if (uniqueVotes.length < QUORUM) {
+      continue;
+    }
+
     if (processedConsensus.has(key)) continue;
+
+    const upCount = uniqueVotes.filter((e) => e.status === 'UP').length;
+    const consensus = upCount >= uniqueVotes.length - upCount ? 'UP' : 'DOWN';
     consensusGauge.set({ url: site }, consensus === 'UP' ? 1 : 0);
 
     // Ensure validators exist before creating logs
-    for (const entry of entries) {
+    for (const entry of uniqueVotes) {
       await prisma.validator.upsert({
         where: { id: entry.validatorId },
         update: {},
@@ -156,16 +175,8 @@ async function processQuorum() {
       });
     }
 
-    // Ensure valid timestamps for database entries
-    // Deduplicate entries by (validatorId, site, timestamp)
-    const uniqueMap = new Map();
-    for (const e of entries) {
-      const key = `${e.validatorId}-${site}-${new Date(e.timestamp).toISOString()}`;
-      if (!uniqueMap.has(key)) {
-        uniqueMap.set(key, e);
-      }
-    }
-    const validEntries = Array.from(uniqueMap.values()).map((e) => ({
+    // Create logs for each unique validator vote
+    const validEntries = uniqueVotes.map((e) => ({
       validatorId: e.validatorId,
       site,
       status: e.status,
@@ -184,6 +195,7 @@ async function processQuorum() {
       logError(`Invalid consensus timestamp: ${timestamp}`);
       continue;
     }
+
     await prisma.validator.upsert({
       where: { id: 0 },
       update: {},
@@ -202,14 +214,21 @@ async function processQuorum() {
         timestamp: consensusTimestamp
       }
     });
-    const payload = { url: site, consensus, votes: entries, timestamp };
+
+    const payload = { url: site, consensus, votes: uniqueVotes, timestamp };
     try { await sendToTopic(KAFKA_TOPIC, payload); } catch (e) { logError(`Kafka publish failed: ${(e as Error).message}`); }
+    
     if (consensus === 'DOWN') {
-      for (const e of entries.filter((e) => e.status === 'DOWN')) {
+      for (const e of uniqueVotes.filter((e) => e.status === 'DOWN')) {
         const to = ALERT_EMAILS[e.location];
         if (!to) continue;
         try {
-          await mailTransporter.sendMail({ from: process.env.ALERT_FROM!, to, subject: `ALERT: ${site} DOWN in ${e.location}`, text: `Validator ${e.validatorId}@${e.location} reported DOWN at ${timestamp}.`, });
+          await mailTransporter.sendMail({ 
+            from: process.env.ALERT_FROM!, 
+            to, 
+            subject: `ALERT: ${site} DOWN in ${e.location}`, 
+            text: `Validator ${e.validatorId}@${e.location} reported DOWN at ${timestamp}.`, 
+          });
           info(`✉️ Alert sent to ${to}`);
         } catch (mailErr) { logError(`Mail error: ${(mailErr as Error).message}`); }
       }
@@ -220,6 +239,7 @@ async function processQuorum() {
     voteLatencyHistogram.observe({ url: site }, processingTime);
   }
 }
+
 async function startKafkaConsumer() {
   const kafkaClient = new Kafka({ clientId: 'aggregator', brokers: kafkaBrokerList, logLevel: logLevel.INFO, });
   const consumer = kafkaClient.consumer({ groupId: 'aggregator-group' });
@@ -230,32 +250,41 @@ async function startKafkaConsumer() {
   await consumer.run({ eachMessage: async ({ message }) => {
     try {
       const payload = JSON.parse(message.value!.toString());
-      // Normalize timestamp to the nearest second
+      // Normalize timestamp to the exact second (floor to nearest second)
       const timestampMs = new Date(payload.timestamp).getTime();
       const normalizedTimestamp = new Date(Math.floor(timestampMs / 1000) * 1000).toISOString();
       const key = `${payload.url}__${normalizedTimestamp}`;
 
       if (processedConsensus.has(key)) return;
-      voteBuffer[key] = voteBuffer[key] || [];
-      voteBuffer[key].push({
+      
+      // Initialize vote buffer for this key if it doesn't exist
+      if (!voteBuffer[key]) {
+        voteBuffer[key] = new Map();
+      }
+      
+      // Update or add the latest vote from this validator
+      voteBuffer[key].set(payload.validatorId, {
         validatorId: payload.validatorId,
         status: payload.status,
         weight: 1,
         latencyMs: payload.latencyMs,
         location: payload.location,
-        timestamp: timestampMs
+        timestamp: Math.floor(timestampMs / 1000) * 1000 // Normalize to exact second
       });
+
       voteCounter.inc({ status: payload.status });
       voteLatencyHistogram.observe(payload.latencyMs / 1000);
 
-      if (voteBuffer[key].length >= QUORUM) {
+      // Only process quorum if we have enough unique validator votes
+      if (voteBuffer[key].size >= QUORUM) {
         await processQuorum();
       }
-  } catch (err) {
+    } catch (err) {
       logError(`Error processing Kafka message: ${(err as Error).message}`);
     }
   }, });
 }
+
 startKafkaConsumer().catch((err) => { logError(`Failed to start Kafka consumer: ${err}`); process.exit(1); });
 setInterval(cleanupOldVotes, 60 * 1000);
 setInterval(() => { processQuorum().catch((e) => logError(`processQuorum crashed: ${(e as Error).message}`)); }, AGG_INTERVAL);

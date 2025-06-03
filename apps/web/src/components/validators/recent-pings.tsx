@@ -17,6 +17,7 @@ interface LogEntry {
 
 interface RecentPingsProps {
   validatorId: number | null;
+  onNewPing?: (ping: LogEntry) => void;
 }
 
 const formatTime = (timestamp: string) => {
@@ -27,10 +28,12 @@ const formatTime = (timestamp: string) => {
   return `${Math.floor(seconds / 3600)}h ago`;
 };
 
-const RecentPings: React.FC<RecentPingsProps> = ({ validatorId }) => {
+const RecentPings: React.FC<RecentPingsProps> = ({ validatorId, onNewPing }) => {
   const [pings, setPings] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const lastUpdateRef = useRef<number>(0);
+  const lastPingIdsRef = useRef<Set<string>>(new Set());
 
   const load = async () => {
     if (!validatorId) return;
@@ -39,23 +42,43 @@ const RecentPings: React.FC<RecentPingsProps> = ({ validatorId }) => {
       if (!res.ok) return;
       const data = await res.json();
       const logs = data.success ? data.logs : [];
+      
       // Deduplicate logs by site, timestamp, and validatorId, and filter out validatorId === 0
       const seen = new Set();
       const uniqueLogs = [];
+      const now = Date.now();
+      
       for (const log of logs) {
-        if (log.validatorId === 0) continue;
+        if (log.validatorId === 0) continue; // Skip aggregator logs
+        
+        // Skip logs that are too old (older than 5 minutes)
+        const logTime = new Date(log.timestamp).getTime();
+        if (now - logTime > 5 * 60 * 1000) continue;
+        
         const key = `${log.site}-${log.timestamp}-${log.validatorId}`;
         if (!seen.has(key)) {
           seen.add(key);
           uniqueLogs.push(log);
         }
       }
+      
       // Sort by timestamp and take the most recent 15
       const sortedLogs = uniqueLogs
         .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
         .slice(0, 15);
+      
       setPings(sortedLogs);
       setLoading(false);
+      lastUpdateRef.current = now;
+      // Notify parent if a new ping is detected
+      const newPingIds = new Set(sortedLogs.map(p => `${p.site}-${p.timestamp}-${p.validatorId}`));
+      for (const log of sortedLogs) {
+        const key = `${log.site}-${log.timestamp}-${log.validatorId}`;
+        if (!lastPingIdsRef.current.has(key) && onNewPing) {
+          onNewPing(log);
+        }
+      }
+      lastPingIdsRef.current = newPingIds;
     } catch (e) {
       console.error('Failed to load recent pings', e);
     }
@@ -65,7 +88,8 @@ const RecentPings: React.FC<RecentPingsProps> = ({ validatorId }) => {
     if (validatorId) {
       setLoading(true);
       load();
-      intervalRef.current = setInterval(load, 60_000);
+      // Refresh more frequently (every 5 seconds) to catch retries
+      intervalRef.current = setInterval(load, 5000);
     } else {
       setPings([]);
       setLoading(false);
