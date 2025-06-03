@@ -1,3 +1,61 @@
+# Server (Backend)
+
+Node.js backend for the Distributed Validator Platform. Runs validators, aggregator, API server, and handles consensus, logs, alerts, and more.
+
+## Features
+- Distributed validators (ICMP/HTTP pings)
+- Gossip and Raft consensus
+- Aggregator for quorum and alerting
+- REST and WebSocket APIs
+- Kafka and email integration
+- PostgreSQL via Prisma ORM
+
+## Setup
+1. Install dependencies:
+   ```bash
+   pnpm install
+   ```
+2. Copy `.env.example` to `.env` in each service (see below)
+3. Run with Docker Compose:
+   ```bash
+   docker-compose up --build
+   ```
+
+## Services & Env Files
+- **Aggregator:** `apps/server/src/services/aggregator/.env.example`
+- **Validator:**  `apps/server/src/services/validator/.env.example`
+- **API Server:** `apps/server/src/services/api-server/.env.example`
+
+## Key Environment Variables
+- `PORT` — Service port
+- `IS_AGGREGATOR` — Set to `true` for aggregator
+- `VALIDATOR_ID` — Unique for each validator
+- `PEERS` — Comma-separated peer addresses
+- `KAFKA_BROKER_LIST` — Kafka brokers
+- `DATABASE_URL` — PostgreSQL connection
+- `SMTP_*` — Email alert config
+- See each `.env.example` for full details
+
+## Running Services
+- **Aggregator:**
+  ```bash
+  IS_AGGREGATOR=true node dist/src/services/aggregator/server.js
+  ```
+- **Validator:**
+  ```bash
+  IS_AGGREGATOR=false VALIDATOR_ID=1 node dist/src/services/validator/server.js
+  ```
+- **API Server:**
+  ```bash
+  node dist/src/services/api-server/api-server.js
+  ```
+
+## API Endpoints
+See the main project README or `/api/docs` for all endpoints.
+
+## License
+MIT © Kartik Tomar
+
 # DeepFry API Documentation
 
 ## Authentication Endpoints

@@ -1,4 +1,23 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/create-next-app).
+# Documentation Site
+
+This app provides documentation for the Distributed Validator Platform using Next.js.
+
+## Setup
+1. Install dependencies:
+   ```bash
+   pnpm install
+   ```
+2. Start the dev server:
+   ```bash
+   pnpm dev
+   ```
+3. Open [http://localhost:3000](http://localhost:3000)
+
+## Purpose
+- Central place for platform docs, guides, and API reference.
+
+## License
+MIT © Kartik Tomar
 
 ## Getting Started
 
