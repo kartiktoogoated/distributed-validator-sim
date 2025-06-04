@@ -1,4 +1,6 @@
 import { Router, Request, Response } from 'express';
+import passport from '../../../config/passport';
+import jwt from 'jsonwebtoken';
 import { signup, verifyPendingSignup, signin } from '../../../controllers/authController';
 import { authRateLimiter } from '../../../middlewares/rateLimiter';
 import { PublicKey } from '@solana/web3.js';
@@ -6,6 +8,7 @@ import nacl from 'tweetnacl';
 import prisma from '../../../prismaClient';
 
 const authRouter = Router();
+const JWT_SECRET = process.env.JWT_SECRET!;
 
 // Rate limiter for all auth routes
 authRouter.use(authRateLimiter);
@@ -61,5 +64,36 @@ authRouter.post('/verify-wallet', async (req: Request, res: Response): Promise<v
         return;
     }
 });
+
+// Google Oauth routes.
+
+authRouter.get(
+    '/google',
+    passport.authenticate('google', { scope: ['profile', 'email'] })
+);
+
+authRouter.get(
+    '/google/callback',
+    (req, res, next) => {
+        passport.authenticate(
+            'google',
+            { session: false },
+            async (err, user, info) => {
+                if (err || !user) {
+                    return res.status(401).json({ message: 'Google authentication failed' });
+                }
+                const token = jwt.sign(
+                    { userId: (user as any).id, email: (user as any).email },
+                    JWT_SECRET,
+                    { expiresIn: "1h" }
+                );
+                return res.status(200).json({
+                    message: 'Google signin successful',
+                    token,
+                });
+            }
+        )(req, res, next);
+    }
+);
 
 export default authRouter;

@@ -16,6 +16,7 @@ import createLogsRouter from "../../routes/api/v1/logs";
 import SolanaRouter from "../../routes/api/v1/verify-wallet";
 import { globalRateLimiter } from "../../middlewares/rateLimiter";
 import { register as promRegister } from "../../metrics";
+import "../../config/passport";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3004;

@@ -25,7 +25,7 @@ export async function signup(req: Request, res: Response): Promise<void> {
       return;
     }
     if (password !== confirmPassword) {
-      res.status(400).json({ message: "Passwords do not match" });
+      res.status(400).json({ message: "Passwords do not match "});
       return;
     }
 
@@ -42,15 +42,15 @@ export async function signup(req: Request, res: Response): Promise<void> {
     // 3) Generate OTP + expiration (10m)
     const otp = generateOTP();
     const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
-
+    
     // 4) Upsert pendingUser record
-    let pendingRecord = await prisma.pendingUser.findUnique({ where: { email } });
+    let pendingRecord = await prisma.pendingUser.findUnique({ where: {email} });
     if (pendingRecord) {
       pendingRecord = await prisma.pendingUser.update({
         where: { email },
-        data: { password: hashedPassword, otp, otpExpires },
+        data: { password: hashedPassword, otp, otpExpires},
       });
-      info(`Updated pending signup for ${email} with new OTP`);
+      info (`Updated pending signup for ${email} with new OTP`);
     } else {
       pendingRecord = await prisma.pendingUser.create({
         data: { email, password: hashedPassword, otp, otpExpires },
@@ -58,11 +58,11 @@ export async function signup(req: Request, res: Response): Promise<void> {
       info(`Created pending signup for ${email} with OTP`);
     }
 
-    // 5) Enqueue OTP email via Kafka (no verificationLink yet)
+    // 5) Send OTP email
     await sendOtpEmail(pendingRecord.email, otp);
     info(`Sent OTP email directly to ${email}`);
 
-    // 6) Response
+    // 6) Respond
     res.status(201).json({
       message: "Pending signup initiated. Please check your email for the OTP.",
       email,
@@ -73,7 +73,7 @@ export async function signup(req: Request, res: Response): Promise<void> {
 }
 
 /**
- * OTP Verification endpoint.
+ * OTP Verificatiob endpoint.
  */
 export async function verifyPendingSignup(req: Request, res: Response): Promise<void> {
   try {
@@ -83,7 +83,7 @@ export async function verifyPendingSignup(req: Request, res: Response): Promise<
       return;
     }
 
-    const pendingUser = await prisma.pendingUser.findUnique({ where: { email } });
+    const pendingUser = await prisma.pendingUser.findUnique({ where: email })
     if (!pendingUser) {
       res.status(400).json({ message: "No pending signup found for this email" });
       return;
@@ -97,7 +97,7 @@ export async function verifyPendingSignup(req: Request, res: Response): Promise<
       return;
     }
 
-    // 1) Create permanent user
+    // 1) Create permanent User
     const user = await prisma.user.create({
       data: {
         email: pendingUser.email,
@@ -106,7 +106,7 @@ export async function verifyPendingSignup(req: Request, res: Response): Promise<
       },
     });
 
-    // 2) Remove pending record
+    // 2) Remove pending reocrd
     await prisma.pendingUser.delete({ where: { email } });
 
     res.status(200).json({
@@ -131,21 +131,21 @@ export async function signin(req: Request, res: Response): Promise<void> {
 
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
-      res.status(400).json({ message: "Invalid credentials" });
+      res.status(400).json({ message: "Invalid Credentials" });
       return;
     }
 
     const passwordMatch = await bcrypt.compare(password, user.password);
     if (!passwordMatch) {
-      res.status(400).json({ message: "Invalid credentials" });
+      res.status(400).json({ message: "Invalid Password" });
       return;
     }
 
     const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, {
       expiresIn: "1h",
     });
-    res.status(200).json({ message: "Signin successful", token });
-  } catch (err: any) {
+    res.status(200).json({ message: "Signin Successful", token});
+  } catch (err:any) {
     res.status(500).json({ message: "Internal server error", error: err.message });
   }
 }
