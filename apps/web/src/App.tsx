@@ -4,6 +4,7 @@ import { AuthProvider } from '@/context/auth-context';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import { Suspense, lazy } from 'react';
 import { Loader2 } from 'lucide-react';
+import OauthSuccess from "@/pages/oauth-success";
 
 // Lazy load pages
 const LandingPage = lazy(() => import('@/pages/landing'));
@@ -74,6 +75,7 @@ function App() {
                 <ClientDashboard />
               </Suspense>
             } />
+            <Route path="/oauth-success" element={<OauthSuccess />} />
           </Routes>
           <Toaster />
         </AuthProvider>

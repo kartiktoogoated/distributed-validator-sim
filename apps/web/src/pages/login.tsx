@@ -9,7 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { Activity } from 'lucide-react';
 import { useWallet } from '@solana/wallet-adapter-react';
-import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
+// import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');
@@ -140,8 +140,22 @@ const LoginPage = () => {
           </form>
         </CardContent>
 
-        <CardFooter className="flex flex-col space-y-2">
-          <WalletMultiButton className="w-full justify-center" />
+        <CardFooter className="flex flex-col space-y-4">
+          <Button
+            variant="outline"
+            className="w-full flex items-center justify-center gap-2"
+            asChild
+          >
+            <a href="https://api.deepfry.tech/api/auth/google">
+              <img
+                src="https://www.svgrepo.com/show/475656/google-color.svg"
+                alt="Google"
+                className="h-5 w-5 mt-0.5"
+              />
+              Sign in with Google
+            </a>
+          </Button>
+          {/* <WalletMultiButton className="w-full justify-center" /> */}
           {connected && (
             <Button variant="default" onClick={handlePhantomSign} className="w-full">
               Sign & Login with Phantom
