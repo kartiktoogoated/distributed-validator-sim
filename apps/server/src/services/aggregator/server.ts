@@ -17,6 +17,7 @@ import { Kafka, logLevel } from "kafkajs";
 import prisma from "../../prismaClient";
 import createSimulationRouter from "../../routes/api/v1/simulation";
 import { WebSocketServer } from "ws";
+import { ValidatorRewards } from '../tokenomics/solana';
 
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -116,6 +117,25 @@ const mailTransporter = nodemailer.createTransport({
 const voteBuffer: Record<string, Map<number, any>> = {};
 const VOTE_TTL_MS = 5 * 60 * 1000;
 
+// Initialize validator rewards (new API)
+const validatorRewards = new ValidatorRewards();
+
+// Track validator performance
+const validatorPerformance = new Map<number, {
+  totalVotes: number;
+  validVotes: number;
+  lastRewardTimestamp: number;
+}>();
+
+interface VoteEntry {
+  validatorId: number;
+  status: 'UP' | 'DOWN';
+  weight: number;
+  latencyMs: number;
+  location: string;
+  timestamp: number;
+}
+
 function cleanupOldVotes() {
   const now = Date.now();
   for (const key of Object.keys(voteBuffer)) {
@@ -138,33 +158,69 @@ function cleanupOldVotes() {
 
 async function processQuorum() {
   const startTime = Date.now();
+  
   for (const key of Object.keys(voteBuffer)) {
-    // Defensive: skip malformed keys
-    if (!key.includes('__')) {
-      logError(`Malformed key in voteBuffer: ${key}`);
-      continue;
-    }
-    const [site, timestamp] = key.split('__');
-    if (!site || !timestamp) {
-      logError(`Malformed key in voteBuffer: ${key}`);
-      continue;
-    }
-
     const validatorVotes = voteBuffer[key];
-    const uniqueVotes = Array.from(validatorVotes.values());
-    
-    if (uniqueVotes.length < QUORUM) {
+    const entries = Array.from(validatorVotes.values()) as VoteEntry[];
+    if (entries.length < QUORUM) continue;
+
+    const [site, timestamp] = key.split('__');
+    const upCount = entries.filter((e) => e.status === 'UP').length;
+    const consensus: 'UP' | 'DOWN' =
+      upCount >= entries.length - upCount ? 'UP' : 'DOWN';
+
+    // Skip if already processed
+    if (processedConsensus.has(key)) {
       continue;
     }
 
-    if (processedConsensus.has(key)) continue;
+    info(`✔️ Consensus for ${site}@${timestamp}: ${consensus} (${upCount}/${entries.length} UP)`);
 
-    const upCount = uniqueVotes.filter((e) => e.status === 'UP').length;
-    const consensus = upCount >= uniqueVotes.length - upCount ? 'UP' : 'DOWN';
+    // Update consensus metric
     consensusGauge.set({ url: site }, consensus === 'UP' ? 1 : 0);
 
+    // Update validator performance
+    for (const entry of entries) {
+      const performance = validatorPerformance.get(entry.validatorId) || {
+        totalVotes: 0,
+        validVotes: 0,
+        lastRewardTimestamp: 0
+      };
+
+      performance.totalVotes++;
+      // A vote is considered valid if it matches the consensus
+      if (entry.status === consensus) {
+        performance.validVotes++;
+      }
+
+      validatorPerformance.set(entry.validatorId, performance);
+
+      // Check if validator should be rewarded (every hour)
+      const now = Date.now();
+      if (now - performance.lastRewardTimestamp >= 3600000) { // 1 hour
+        const validatorPubkey = process.env[`VALIDATOR_${entry.validatorId}_PUBKEY`];
+        if (validatorPubkey) {
+          const signature = await validatorRewards.rewardValidator(
+            validatorPubkey,
+            performance.totalVotes,
+            performance.validVotes
+          );
+          if (signature) {
+            info(`Rewarded validator ${entry.validatorId} with signature ${signature}`);
+            // Reset performance tracking after reward
+            performance.totalVotes = 0;
+            performance.validVotes = 0;
+            performance.lastRewardTimestamp = now;
+            validatorPerformance.set(entry.validatorId, performance);
+          } else {
+            logError(`Rewarding validator ${entry.validatorId} failed (see logs above)`);
+          }
+        }
+      }
+    }
+
     // Ensure validators exist before creating logs
-    for (const entry of uniqueVotes) {
+    for (const entry of entries) {
       await prisma.validator.upsert({
         where: { id: entry.validatorId },
         update: {},
@@ -176,7 +232,7 @@ async function processQuorum() {
     }
 
     // Create logs for each unique validator vote
-    const validEntries = uniqueVotes.map((e) => ({
+    const validEntries = entries.map((e) => ({
       validatorId: e.validatorId,
       site,
       status: e.status,
@@ -215,7 +271,7 @@ async function processQuorum() {
       }
     });
 
-    const payload = { url: site, consensus, votes: uniqueVotes, timestamp };
+    const payload = { url: site, consensus, votes: entries, timestamp };
     try { await sendToTopic(KAFKA_TOPIC, payload); } catch (e) { logError(`Kafka publish failed: ${(e as Error).message}`); }
     
     // Broadcast consensus to all WebSocket clients for live dashboard
@@ -227,7 +283,7 @@ async function processQuorum() {
     }
     
     if (consensus === 'DOWN') {
-      for (const e of uniqueVotes.filter((e) => e.status === 'DOWN')) {
+      for (const e of entries.filter((e) => e.status === 'DOWN')) {
         const to = ALERT_EMAILS[e.location];
         if (!to) continue;
         try {

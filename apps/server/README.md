@@ -10,6 +10,58 @@ Node.js backend for the Distributed Validator Platform. Runs validators, aggrega
 - Kafka and email integration
 - PostgreSQL via Prisma ORM
 
+## Tokenomics System
+
+The system includes a tokenomics reward mechanism using Solana:
+
+- Validators receive SOL rewards for accurate votes
+- Rewards are distributed hourly based on validator performance
+- Performance is measured by the ratio of valid votes to total votes
+- Minimum threshold of valid votes required for rewards
+- Rewards are proportional to validator accuracy
+
+### Required Environment Variables
+
+Add these variables to your `.env` file:
+
+```env
+# Solana Configuration
+SOLANA_RPC_ENDPOINT=https://api.devnet.solana.com
+REWARD_WALLET_PRIVATE_KEY=your_base64_encoded_private_key
+TOKEN_MINT_ADDRESS=your_token_mint_address
+
+# Validator Public Keys (for rewards)
+VALIDATOR_1_PUBKEY=validator1_public_key
+VALIDATOR_2_PUBKEY=validator2_public_key
+VALIDATOR_3_PUBKEY=validator3_public_key
+```
+
+### Setting Up Solana Rewards
+
+1. Create a Solana wallet for rewards:
+   ```bash
+   solana-keygen new -o reward-wallet.json
+   ```
+
+2. Get the public key:
+   ```bash
+   solana-keygen pubkey reward-wallet.json
+   ```
+
+3. Fund the wallet with SOL (on devnet):
+   ```bash
+   solana airdrop 1 <PUBKEY> --url devnet
+   ```
+
+4. Convert private key to base64:
+   ```bash
+   base64 reward-wallet.json
+   ```
+
+5. Add the base64-encoded private key to your `.env` file as `REWARD_WALLET_PRIVATE_KEY`
+
+6. Add each validator's Solana public key to the environment variables
+
 ## Setup
 1. Install dependencies:
    ```bash
