@@ -82,15 +82,19 @@ authRouter.get(
                 if (err || !user) {
                     return res.status(401).json({ message: 'Google authentication failed' });
                 }
+                const { id, email, name, avatar } = user as any;
                 const token = jwt.sign(
-                    { userId: (user as any).id, email: (user as any).email },
+                    { userId: id, email, name, avatar },
                     JWT_SECRET,
                     { expiresIn: "1h" }
                 );
-                return res.status(200).json({
-                    message: 'Google signin successful',
-                    token,
-                });
+                // Redirect to frontend with token and user info as query params
+                return res.redirect(
+                  `https://www.deepfry.tech/oauth-success?token=${token}` +
+                  (name ? `&name=${encodeURIComponent(name)}` : '') +
+                  (email ? `&email=${encodeURIComponent(email)}` : '') +
+                  (avatar ? `&avatar=${encodeURIComponent(avatar)}` : '')
+                );
             }
         )(req, res, next);
     }
