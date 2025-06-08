@@ -1,10 +1,11 @@
-import React, { useEffect, useState } from "react";
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { useEffect, useState } from "react";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { CheckCircle2, XCircle } from "lucide-react";
 
 const WS_URL =
-  import.meta.env.VITE_AGGREGATOR_WS_URL || "ws://localhost:3000/api/ws";
+  import.meta.env.VITE_AGGREGATOR_WS_URL || "wss://deepfry.tech/api/ws";
 
 interface ConsensusPayload {
   url: string;
@@ -20,20 +21,42 @@ interface LiveConsensusStatusProps {
 export default function LiveConsensusStatus({ compact }: LiveConsensusStatusProps) {
   const [statuses, setStatuses] = useState<Record<string, ConsensusPayload>>({});
 
+  // Fetch initial consensus from REST API
+  useEffect(() => {
+    fetch("/api/consensus")
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.consensus) {
+          const initialStatuses: Record<string, ConsensusPayload> = {};
+          data.consensus.forEach((item: any) => {
+            initialStatuses[item.site] = {
+              url: item.site,
+              consensus: item.status,
+              votes: [],
+              timestamp: item.timestamp,
+            };
+          });
+          setStatuses(initialStatuses);
+        }
+      });
+  }, []);
+
+  // Listen for live updates via WebSocket
   useEffect(() => {
     const ws = new WebSocket(WS_URL);
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data) as ConsensusPayload;
         setStatuses((prev) => ({ ...prev, [data.url]: data }));
-      } catch {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      } catch (e) {
         // Ignore invalid messages
       }
     };
     return () => ws.close();
   }, []);
 
-  if (Object.keys(statuses).length === 0) return null;
+  if (Object.keys(statuses).length === 0) return <div>No consensus data yet.</div>;
 
   if (compact) {
     return (
@@ -41,7 +64,10 @@ export default function LiveConsensusStatus({ compact }: LiveConsensusStatusProp
         {Object.entries(statuses).map(([url, payload]) => (
           <Tooltip key={url}>
             <TooltipTrigger asChild>
-              <div className="flex items-center gap-1 cursor-pointer px-2 py-1 rounded bg-muted/50">
+              <div
+                className="flex items-center gap-1 cursor-pointer px-2 py-1 rounded transition-colors bg-muted/50 hover:bg-muted border border-border"
+                style={{ color: 'var(--foreground)', background: 'rgba(60,60,60,0.12)' }}
+              >
                 <span
                   className={`inline-block w-2.5 h-2.5 rounded-full mr-1 ${
                     payload.consensus === "UP" ? "bg-green-500" : "bg-red-500"
@@ -53,7 +79,7 @@ export default function LiveConsensusStatus({ compact }: LiveConsensusStatusProp
                 </span>
               </div>
             </TooltipTrigger>
-            <TooltipContent side="top">
+            <TooltipContent side="top" className="bg-background text-foreground border border-border shadow-lg !bg-opacity-100">
               <div className="text-xs">
                 <div>
                   <b>Status:</b> {payload.consensus}
@@ -65,7 +91,7 @@ export default function LiveConsensusStatus({ compact }: LiveConsensusStatusProp
                     hour12: true,
                   })}
                 </div>
-                <pre className="mt-1 bg-muted p-1 rounded max-w-xs overflow-x-auto">
+                <pre className="mt-1 bg-muted p-1 rounded max-w-xs overflow-x-auto text-foreground">
                   {JSON.stringify(payload, null, 2)}
                 </pre>
               </div>
@@ -81,7 +107,7 @@ export default function LiveConsensusStatus({ compact }: LiveConsensusStatusProp
       {Object.entries(statuses).map(([url, payload]) => (
         <Tooltip key={url}>
           <TooltipTrigger asChild>
-            <Card className="transition-shadow hover:shadow-lg cursor-pointer">
+            <Card className="transition-shadow hover:shadow-lg cursor-pointer border border-border">
               <CardHeader className="pb-2 flex-row items-center justify-between">
                 <CardTitle className="text-base font-mono truncate max-w-[180px] flex-1">{url}</CardTitle>
                 {payload.consensus === "UP" ? (
@@ -112,7 +138,7 @@ export default function LiveConsensusStatus({ compact }: LiveConsensusStatusProp
               </CardContent>
             </Card>
           </TooltipTrigger>
-          <TooltipContent side="top">
+          <TooltipContent side="top" className="bg-background text-foreground border border-border shadow-lg !bg-opacity-100">
             <div className="text-xs">
               <div>
                 <b>Status:</b> {payload.consensus}
@@ -124,7 +150,7 @@ export default function LiveConsensusStatus({ compact }: LiveConsensusStatusProp
                   hour12: true,
                 })}
               </div>
-              <pre className="mt-1 bg-muted p-1 rounded max-w-xs overflow-x-auto">
+              <pre className="mt-1 bg-muted p-1 rounded max-w-xs overflow-x-auto text-foreground">
                 {JSON.stringify(payload, null, 2)}
               </pre>
             </div>

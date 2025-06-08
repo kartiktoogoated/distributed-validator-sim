@@ -360,7 +360,7 @@ const ValidatorDashboard: React.FC = () => {
                 </Card>
 
                 <Card className="relative overflow-hidden">
-                  <div className="absolute -right-4 -top-4 bg-primary text-white py-1 px-3 rotate-45 text-xs font-semibold">
+                  <div className="absolute top-2 right-2 z-10 bg-muted text-muted-foreground px-2 py-0.5 rounded text-[10px] font-semibold border border-border shadow-sm opacity-80 pointer-events-none">
                     Coming Soon
                   </div>
                   <CardHeader className="flex justify-between space-y-0 pb-2">

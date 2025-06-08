@@ -46,15 +46,8 @@ const RecentPings: React.FC<RecentPingsProps> = ({ validatorId, onNewPing }) => 
       // Deduplicate logs by site, timestamp, and validatorId, and filter out validatorId === 0
       const seen = new Set();
       const uniqueLogs = [];
-      const now = Date.now();
-      
       for (const log of logs) {
         if (log.validatorId === 0) continue; // Skip aggregator logs
-        
-        // Skip logs that are too old (older than 5 minutes)
-        const logTime = new Date(log.timestamp).getTime();
-        if (now - logTime > 5 * 60 * 1000) continue;
-        
         const key = `${log.site}-${log.timestamp}-${log.validatorId}`;
         if (!seen.has(key)) {
           seen.add(key);
@@ -69,7 +62,7 @@ const RecentPings: React.FC<RecentPingsProps> = ({ validatorId, onNewPing }) => 
       
       setPings(sortedLogs);
       setLoading(false);
-      lastUpdateRef.current = now;
+      lastUpdateRef.current = Date.now();
       // Notify parent if a new ping is detected
       const newPingIds = new Set(sortedLogs.map(p => `${p.site}-${p.timestamp}-${p.validatorId}`));
       for (const log of sortedLogs) {

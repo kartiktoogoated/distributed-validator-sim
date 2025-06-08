@@ -57,6 +57,7 @@
     "passport-google-oauth20": "^2.0.0",
     "ping": "^0.4.4",
     "prom-client": "^15.1.3",
+    "razorpay": "^2.9.6",
     "tweetnacl": "^1.0.3",
     "web3.js": "link:@types/solana/web3.js",
     "winston": "^3.11.0",

@@ -339,12 +339,14 @@ export default function DashboardLayout({
   );
 
   return (
-    <div className="flex h-screen">
-      {renderSidebar()}
-      <div className={`flex-1 flex flex-col overflow-hidden transition-all duration-300 ${!isMobile && sidebarCollapsed ? 'ml-16' : ''}`}>
-        {renderHeader()}
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+    <TooltipProvider>
+      <div className="flex h-screen">
+        {renderSidebar()}
+        <div className={`flex-1 flex flex-col overflow-hidden transition-all duration-300 ${!isMobile && sidebarCollapsed ? 'ml-16' : ''}`}>
+          {renderHeader()}
+          <main className="flex-1 overflow-y-auto p-6">{children}</main>
+        </div>
       </div>
-    </div>
+    </TooltipProvider>
   );
 }
