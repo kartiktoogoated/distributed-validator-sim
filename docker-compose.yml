@@ -112,7 +112,7 @@ services:
         node /app/apps/server/dist/src/services/api-server/api-server.js
       "
 
-  validator1:
+  validator-1:
     build:
       context: .
       dockerfile: apps/server/src/services/validator/Dockerfile
@@ -122,6 +122,7 @@ services:
       - .env.nodeB
     depends_on:
       - db
+      - aggregator
     networks:
       - raftnet
     cap_add:
@@ -130,14 +131,16 @@ services:
       sh -c "
         echo '🕒 Waiting for DB...' &&
         until nc -z db 5432; do sleep 1; done &&
-        echo '✅ DB ready, running migrations...' &&
+        echo '🕒 Waiting for Aggregator...' &&
+        until nc -z aggregator 3000; do sleep 1; done &&
+        echo '✅ All services ready, running migrations...' &&
         cd /app/packages/db &&
         npx prisma migrate deploy &&
         echo '🚀 Starting Validator 1...' &&
         node /app/apps/server/dist/src/services/validator/server.js
       "
 
-  validator2:
+  validator-2:
     build:
       context: .
       dockerfile: apps/server/src/services/validator/Dockerfile
@@ -147,6 +150,7 @@ services:
       - .env.nodeC
     depends_on:
       - db
+      - aggregator
     networks:
       - raftnet
     cap_add:
@@ -155,7 +159,9 @@ services:
       sh -c "
         echo '🕒 Waiting for DB...' &&
         until nc -z db 5432; do sleep 1; done &&
-        echo '✅ DB ready, running migrations...' &&
+        echo '🕒 Waiting for Aggregator...' &&
+        until nc -z aggregator 3000; do sleep 1; done &&
+        echo '✅ All services ready, running migrations...' &&
         cd /app/packages/db &&
         npx prisma migrate deploy &&
         echo '🚀 Starting Validator 2...' &&

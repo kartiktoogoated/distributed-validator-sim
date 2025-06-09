@@ -11,7 +11,6 @@ import helmet from "helmet";
 import { Validator } from "../../core/Validator";
 import { info, error as logError } from "../../../utils/logger";
 import { register as promRegister } from "../../metrics";
-import prisma from "../../prismaClient";
 import createSimulationRouter from "../../routes/api/v1/simulation";
 import { WebSocketServer } from "ws";
 import http from "http";
@@ -54,6 +53,7 @@ app.use(express.json());
 const validatorId = Number(process.env.VALIDATOR_ID);
 const location = process.env.LOCATION || "unknown";
 const pingInterval = Number(process.env.PING_INTERVAL_MS) || 30000;
+const targetWebsiteUrl = process.env.TARGET_WEBSITE_URL || "http://x.com";
 
 const validator = new Validator(validatorId, location);
 let lastCheck: any = null;
@@ -88,25 +88,43 @@ app.get("/status", (_req: Request, res: Response<ValidatorStatus>) => {
   });
 });
 
-// Add mock Raft vote endpoint
-app.post('/api/raft/vote', (req, res) => {
-  info(`Received Raft vote request`);
-  res.status(200).send({ success: true });
-});
-
-// Function to get target URL from database
-async function getTargetUrl(): Promise<string> {
-  const website = await prisma.website.findFirst({
-    where: { paused: false }
-  });
-  if (!website) {
-    throw new Error("No active websites found in database");
+// Start periodic website check
+setInterval(async () => {
+  try {
+    const { vote, latency } = await validator.checkWebsite(targetWebsiteUrl);
+    lastCheck = { vote, latency, timestamp: new Date().toISOString() };
+  } catch (error) {
+    logError(`Validator ${validatorId} failed to check website ${targetWebsiteUrl}: ${error}`);
   }
-  return website.url;
-}
+}, pingInterval);
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
+
+// Handle WebSocket server lifecycle
+wss.on('connection', (ws) => {
+  info(`Client connected to validator ${validatorId}`);
+  
+  ws.on('error', (err) => {
+    logError(`WebSocket error: ${err.message}`);
+  });
+
+  ws.on('close', () => {
+    info(`Client disconnected from validator ${validatorId}`);
+  });
+});
+
+// Handle server shutdown
+process.on('SIGTERM', () => {
+  info(`Shutting down validator ${validatorId}...`);
+  wss.close(() => {
+    info(`WebSocket server closed for validator ${validatorId}`);
+    server.close(() => {
+      info(`HTTP server closed for validator ${validatorId}`);
+      process.exit(0);
+    });
+  });
+});
 
 // Mount the simulation router for simulation coordination
 app.use("/api/simulate", createSimulationRouter(wss));

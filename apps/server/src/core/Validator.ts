@@ -2,7 +2,7 @@ import ping from "ping";
 import * as dns from "dns";
 import { promisify } from "util";
 import { info, warn, error as logError } from "../../utils/logger";
-import { sendToTopic } from "../services/producer";
+import { WebSocket } from "ws";
 
 export type Status = "UP" | "DOWN";
 export interface Vote {
@@ -41,10 +41,107 @@ export class Validator {
   public peers: string[] = [];
   private lastVotes = new Map<string, Vote>();
   private location: string;
+  private ws: WebSocket | null = null;
+  private wsReconnectTimeout: NodeJS.Timeout | null = null;
+  private readonly aggregatorUrl: string;
+  private isConnecting: boolean = false;
+  private reconnectAttempts: number = 0;
+  private readonly MAX_RECONNECT_ATTEMPTS = 5;
+  private readonly RECONNECT_DELAY = 5000; // 5 seconds
+  private connectionLock: boolean = false;
+  private pingInterval: NodeJS.Timeout | null = null;
 
   constructor(id: number, location: string = process.env.LOCATION || "unknown") {
     this.id = id;
     this.location = location;
+    this.aggregatorUrl = process.env.AGGREGATOR_URL || 'ws://aggregator:3000/ws';
+    this.connectWebSocket();
+  }
+
+  private connectWebSocket() {
+    if (this.connectionLock || this.isConnecting || (this.ws && this.ws.readyState === WebSocket.OPEN)) {
+      return; // Prevent duplicate connection attempts
+    }
+
+    this.connectionLock = true;
+    this.isConnecting = true;
+    
+    try {
+      if (this.ws) {
+        this.ws.terminate(); // Clean up existing connection
+        this.ws = null;
+      }
+
+      if (this.pingInterval) {
+        clearInterval(this.pingInterval);
+        this.pingInterval = null;
+      }
+
+      this.ws = new WebSocket(this.aggregatorUrl);
+
+      this.ws.on('open', () => {
+        this.isConnecting = false;
+        this.connectionLock = false;
+        this.reconnectAttempts = 0; // Reset reconnect attempts on successful connection
+        info(`WebSocket connected to aggregator at ${this.aggregatorUrl}`);
+        if (this.wsReconnectTimeout) {
+          clearTimeout(this.wsReconnectTimeout);
+          this.wsReconnectTimeout = null;
+        }
+
+        // Start ping interval only after successful connection
+        this.pingInterval = setInterval(() => {
+          if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.ping();
+          } else {
+            if (this.pingInterval) {
+              clearInterval(this.pingInterval);
+              this.pingInterval = null;
+            }
+          }
+        }, 30000);
+      });
+
+      this.ws.on('close', () => {
+        this.isConnecting = false;
+        this.connectionLock = false;
+        info('WebSocket disconnected from aggregator');
+        
+        if (this.pingInterval) {
+          clearInterval(this.pingInterval);
+          this.pingInterval = null;
+        }
+        
+        if (this.reconnectAttempts < this.MAX_RECONNECT_ATTEMPTS) {
+          this.reconnectAttempts++;
+          const delay = this.RECONNECT_DELAY * Math.pow(2, this.reconnectAttempts - 1); // Exponential backoff
+          info(`Attempting to reconnect in ${delay/1000} seconds (attempt ${this.reconnectAttempts}/${this.MAX_RECONNECT_ATTEMPTS})...`);
+          this.wsReconnectTimeout = setTimeout(() => this.connectWebSocket(), delay);
+        } else {
+          logError(`Failed to reconnect after ${this.MAX_RECONNECT_ATTEMPTS} attempts`);
+        }
+      });
+
+      this.ws.on('error', (err) => {
+        this.isConnecting = false;
+        this.connectionLock = false;
+        logError(`WebSocket error: ${err.message}`);
+      });
+
+      this.ws.on('pong', () => {
+        // Connection is alive
+      });
+
+    } catch (err) {
+      this.isConnecting = false;
+      this.connectionLock = false;
+      logError(`Failed to connect WebSocket: ${err}`);
+      if (this.reconnectAttempts < this.MAX_RECONNECT_ATTEMPTS) {
+        this.reconnectAttempts++;
+        const delay = this.RECONNECT_DELAY * Math.pow(2, this.reconnectAttempts - 1);
+        this.wsReconnectTimeout = setTimeout(() => this.connectWebSocket(), delay);
+      }
+    }
   }
 
   private recordVote(origin: string, status: Status, weight: number): Vote {
@@ -152,9 +249,10 @@ export class Validator {
       }
     }
 
-    // Send to Kafka
+    // Send vote via WebSocket
     try {
-      const kafkaPayload = {
+      const votePayload = {
+        type: 'vote',
         validatorId: this.id,
         url: origin,
         status: finalStatus,
@@ -170,17 +268,20 @@ export class Validator {
           : undefined
       };
 
-      await sendToTopic("validator-logs", kafkaPayload);
-
-      info(`✅ Validator ${this.id}@${this.location} → ${origin}`);
-      info(`   └─ ICMP ${icmpStatus === ("UP" as Status) ? "🟢" : "🔴"}: ${icmpLatency}ms`);
-      info(`   └─ HTTP ${httpCode ?? "ERR"}: ${httpStatus}`);
-      info(`   └─ Final: ${finalStatus} (Reported: ${reportedLatency}ms)`);
-      if (finalStatus === "DOWN") {
-        warn(`   └─ Failure Reason: ${kafkaPayload.failureReason}`);
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        this.ws.send(JSON.stringify(votePayload));
+        info(`✅ Validator ${this.id}@${this.location} → ${origin}`);
+        info(`   └─ ICMP ${icmpStatus === ("UP" as Status) ? "🟢" : "🔴"}: ${icmpLatency}ms`);
+        info(`   └─ HTTP ${httpCode ?? "ERR"}: ${httpStatus}`);
+        info(`   └─ Final: ${finalStatus} (Reported: ${reportedLatency}ms)`);
+        if (finalStatus === "DOWN") {
+          warn(`   └─ Failure Reason: ${votePayload.failureReason}`);
+        }
+      } else {
+        logError('WebSocket not connected, cannot send vote');
       }
     } catch (err: any) {
-      logError(`Kafka send failed: ${err.message}`);
+      logError(`Failed to send vote via WebSocket: ${err.message}`);
     }
 
     return { vote: this.recordVote(origin, finalStatus, 1), latency: reportedLatency };
