@@ -73,7 +73,7 @@ export default function LiveConsensusStatus({ compact }: LiveConsensusStatusProp
                     payload.consensus === "UP" ? "bg-green-500" : "bg-red-500"
                   }`}
                 />
-                <span className="font-mono text-xs truncate max-w-[90px]">{url}</span>
+                <span className="font-mono text-xs truncate min-w-0">{url}</span>
                 <span className="text-xs font-semibold ml-1">
                   {payload.consensus === "UP" ? "Up" : "Down"}
                 </span>

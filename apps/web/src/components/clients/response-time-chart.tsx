@@ -144,7 +144,8 @@ export default function ResponseTimeChart({ siteId, siteUrl }: Props) {
           responseTime: number
           consensus: 'UP' | 'DOWN'
         }
-        if (new URL(msg.url).origin === new URL(siteUrl).origin) {
+        if (msg.url !== siteUrl) return
+
           setData(prev => [
             ...prev.slice(-59),
             {
@@ -153,7 +154,6 @@ export default function ResponseTimeChart({ siteId, siteUrl }: Props) {
               isDown: msg.consensus === 'DOWN',
             },
           ])
-        }
       } catch {
         // ignore
       }

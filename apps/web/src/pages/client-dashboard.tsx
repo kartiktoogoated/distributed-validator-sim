@@ -159,214 +159,210 @@ const ClientDashboard: React.FC = () => {
         <Route
           path="/"
           element={
-            <div className="max-w-[1600px] mx-auto space-y-6">
-              {/* header */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <h1 className="text-3xl font-bold">Client Dashboard</h1>
-                  <p className="text-muted-foreground">
-                    Monitor your websites using our distributed validator network
-                  </p>
-                </div>
-                <Button onClick={() => setShowAddSite(true)}>
-                  <Plus className="mr-2 h-4 w-4" /> Add Website
-                </Button>
-              </div>
-
-              {/* Live Consensus Status */}
-              <LiveConsensusStatus />
-
-              {/* stats */}
-              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
-                <Card>
-                  <CardHeader className="flex justify-between pb-2">
-                    <CardTitle className="text-sm">Websites</CardTitle>
-                    <Globe className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{siteCount}</div>
-                    <p className="text-xs text-muted-foreground">Monitored websites</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="flex justify-between pb-2">
-                    <CardTitle className="text-sm">Average Uptime</CardTitle>
-                    <Activity className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{avgUptime}%</div>
-                    <p className="text-xs text-muted-foreground">Last 30 days</p>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="flex justify-between pb-2">
-                    <CardTitle className="text-sm">Response Time</CardTitle>
-                    <Clock className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      {avgResponseTime}ms
-                    </div>
-                    <p className="text-xs text-muted-foreground">Average</p>
-                  </CardContent>
-                </Card>
-                <Card className="relative overflow-hidden">
-                  <div className="absolute top-2 right-2 z-10 bg-muted text-muted-foreground px-2 py-0.5 rounded text-[10px] font-semibold border border-border shadow-sm opacity-80 pointer-events-none">
-                    Coming Soon
+            <div className="flex-1 py-6">
+              <div className="container mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
+                {/* header */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h1 className="text-3xl font-bold">Client Dashboard</h1>
+                    <p className="text-muted-foreground">
+                      Monitor your websites using our distributed validator network
+                    </p>
                   </div>
-                  <CardHeader className="flex justify-between pb-2">
-                    <CardTitle className="text-sm">Validators</CardTitle>
-                    <Zap className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold opacity-75">2</div>
-                    <Button variant="ghost" size="sm" onClick={comingSoon}>
-                      Node selection coming soon
-                    </Button>
-                  </CardContent>
-                </Card>
-                {/* Consensus Status Card */}
-                <Card>
-                  <CardHeader className="flex justify-between pb-2">
-                    <CardTitle className="text-sm">Consensus Status</CardTitle>
-                    <Users className="h-4 w-4 text-muted-foreground" />
-                  </CardHeader>
-                  <CardContent>
-                    <LiveConsensusStatus compact />
-                  </CardContent>
-                </Card>
-              </div>
+                  <Button onClick={() => setShowAddSite(true)}>
+                    <Plus className="mr-2 h-4 w-4" /> Add Website
+                  </Button>
+                </div>
 
-              {/* list + analytics */}
-              <div className="grid gap-4 grid-cols-1 md:grid-cols-4">
-                {/* Sites list */}
-                <Card className="md:col-span-1">
-                  <CardHeader>
-                    <CardTitle>Websites</CardTitle>
-                    <CardDescription>Your monitored sites</CardDescription>
-                    <div className="mt-2">
-                      <Input
-                        placeholder="Search websites…"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full"
-                      />
-                    </div>
-                  </CardHeader>
-                  <CardContent className="p-0">
-                    <Suspense fallback={<LoadingSpinner />}>
-                      <SitesList
-                        sites={filteredSites}
-                        onSelect={setSelectedSiteId}
-                        selectedSite={selectedSiteId}
-                        onDelete={loadSites}
-                      />
-                    </Suspense>
-                  </CardContent>
-                  <CardFooter className="border-t p-4">
-                    <Button variant="outline" onClick={() => setShowAddSite(true)}>
-                      <Plus className="mr-2 h-4 w-4" /> Add New
-                    </Button>
-                  </CardFooter>
-                </Card>
+                {/* Live Consensus Status */}
+                <LiveConsensusStatus />
 
-                {/* analytics */}
-                <Card className="md:col-span-3">
-                  <CardHeader>
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <CardTitle>Website Analytics</CardTitle>
-                        <CardDescription>
-                          {selectedSite?.url || 'Select a website'}
-                        </CardDescription>
+                {/* stats */}
+                <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-5">
+                  <Card>
+                    <CardHeader className="flex justify-between pb-2">
+                      <CardTitle className="text-sm">Websites</CardTitle>
+                      <Globe className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">{siteCount}</div>
+                      <p className="text-xs text-muted-foreground">Monitored websites</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader className="flex justify-between pb-2">
+                      <CardTitle className="text-sm">Average Uptime</CardTitle>
+                      <Activity className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">{avgUptime}%</div>
+                      <p className="text-xs text-muted-foreground">Last 30 days</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader className="flex justify-between pb-2">
+                      <CardTitle className="text-sm">Response Time</CardTitle>
+                      <Clock className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">
+                        {avgResponseTime}ms
                       </div>
-                      {selectedSite && (
-                        <div className="flex items-center gap-2">
-                          <Badge
-                            variant={
-                              selectedSite.status === 'online'
-                                ? 'default'
-                                : 'destructive'
-                            }
-                          >
-                            {selectedSite.status === 'online'
-                              ? 'Online'
-                              : 'Offline'}
-                          </Badge>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => window.open(selectedSite.url, '_blank')}
-                          >
-                            <ExternalLink className="h-4 w-4" />
-                          </Button>
+                      <p className="text-xs text-muted-foreground">Average</p>
+                    </CardContent>
+                  </Card>
+                  <Card className="relative overflow-hidden">
+                    <div className="absolute top-2 right-2 z-10 bg-muted text-muted-foreground px-2 py-0.5 rounded text-[10px] font-semibold border border-border shadow-sm opacity-80 pointer-events-none">
+                      Coming Soon
+                    </div>
+                    <CardHeader className="flex justify-between pb-2">
+                      <CardTitle className="text-sm">Validators</CardTitle>
+                      <Zap className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold opacity-75">2</div>
+                      <Button variant="ghost" size="sm" onClick={comingSoon}>
+                        Node selection coming soon
+                      </Button>
+                    </CardContent>
+                  </Card>
+                  {/* Consensus Status Card */}
+                  <Card>
+                    <CardHeader className="flex justify-between pb-2">
+                      <CardTitle className="text-sm">Consensus Status</CardTitle>
+                      <Users className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <LiveConsensusStatus compact />
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* list + analytics */}
+                <div className="grid gap-4 grid-cols-1 md:grid-cols-4">
+                  {/* Sites list */}
+                  <Card className="md:col-span-1">
+                    <CardHeader>
+                      <CardTitle>Websites</CardTitle>
+                      <CardDescription>Your monitored sites</CardDescription>
+                      <div className="mt-2">
+                        <Input
+                          placeholder="Search websites…"
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="w-full"
+                        />
+                      </div>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                      <Suspense fallback={<LoadingSpinner />}>
+                        <SitesList
+                          sites={filteredSites}
+                          onSelect={setSelectedSiteId}
+                          selectedSite={selectedSiteId}
+                          onDelete={loadSites}
+                        />
+                      </Suspense>
+                    </CardContent>
+                    <CardFooter className="border-t p-4">
+                      <Button variant="outline" onClick={() => setShowAddSite(true)}>
+                        <Plus className="mr-2 h-4 w-4" /> Add New
+                      </Button>
+                    </CardFooter>
+                  </Card>
+
+                  {/* analytics */}
+                  <Card className="md:col-span-3">
+                    <CardHeader>
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <CardTitle>Website Analytics</CardTitle>
+                          <CardDescription>
+                            {selectedSite?.url || 'Select a website'}
+                          </CardDescription>
+                        </div>
+                        {selectedSite && (
+                          <div className="flex items-center gap-2">
+                            <Badge
+                              variant={selectedSite.status === 'online' ? 'default' : 'destructive'}
+                            >
+                              {selectedSite.status === 'online' ? 'Online' : 'Offline'}
+                            </Badge>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => window.open(selectedSite.url, '_blank')}
+                            >
+                              <ExternalLink className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      {selectedSite ? (
+                        <Tabs defaultValue="uptime">
+                          <TabsList className="mb-4">
+                            <TabsTrigger value="uptime">Uptime</TabsTrigger>
+                            <TabsTrigger value="performance">Performance</TabsTrigger>
+                            <TabsTrigger value="locations">Validators</TabsTrigger>
+                          </TabsList>
+                          <TabsContent value="uptime">
+                            <Suspense fallback={<LoadingSpinner />}>
+                              <UptimeChart 
+                                siteId={selectedSite.id} 
+                                siteUrl={selectedSite.url}
+                              />
+                            </Suspense>
+                          </TabsContent>
+                          <TabsContent value="performance">
+                            <Suspense fallback={<LoadingSpinner />}>
+                              <ResponseTimeChart
+                                siteId={selectedSite.id}
+                                siteUrl={selectedSite.url}
+                              />
+                            </Suspense>
+                          </TabsContent>
+                          <TabsContent value="locations">
+                            <Suspense fallback={<LoadingSpinner />}>
+                              <ClientMap />
+                            </Suspense>
+                          </TabsContent>
+                        </Tabs>
+                      ) : (
+                        <div className="py-12 text-center text-muted-foreground">
+                          <Globe className="h-12 w-12 mb-4 opacity-20" />
+                          <h3 className="text-lg font-medium">No Website Selected</h3>
+                          <p>Select a website to view analytics</p>
                         </div>
                       )}
-                    </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* validator selection + dialog */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Validator Selection</CardTitle>
+                    <CardDescription>
+                      Select which validator nodes monitor your websites
+                    </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    {selectedSite ? (
-                      <Tabs defaultValue="uptime">
-                        <TabsList className="mb-4">
-                          <TabsTrigger value="uptime">Uptime</TabsTrigger>
-                          <TabsTrigger value="performance">Performance</TabsTrigger>
-                          <TabsTrigger value="locations">Validators</TabsTrigger>
-                        </TabsList>
-                        <TabsContent value="uptime">
-                          <Suspense fallback={<LoadingSpinner />}>
-                            <UptimeChart 
-                              siteId={selectedSite.id} 
-                              siteUrl={selectedSite.url}
-                            />
-                          </Suspense>
-                        </TabsContent>
-                        <TabsContent value="performance">
-                          <Suspense fallback={<LoadingSpinner />}>
-                            <ResponseTimeChart
-                              siteId={selectedSite.id}
-                              siteUrl={selectedSite.url}
-                            />
-                          </Suspense>
-                        </TabsContent>
-                        <TabsContent value="locations">
-                          <Suspense fallback={<LoadingSpinner />}>
-                            <ClientMap />
-                          </Suspense>
-                        </TabsContent>
-                      </Tabs>
-                    ) : (
-                      <div className="py-12 text-center text-muted-foreground">
-                        <Globe className="h-12 w-12 mb-4 opacity-20" />
-                        <h3 className="text-lg font-medium">No Website Selected</h3>
-                        <p>Select a website to view analytics</p>
-                      </div>
-                    )}
+                    <Suspense fallback={<LoadingSpinner />}>
+                      <ValidatorSelection />
+                    </Suspense>
                   </CardContent>
                 </Card>
+
+                <Suspense fallback={<LoadingSpinner />}>
+                  <AddSiteDialog
+                    open={showAddSite}
+                    onOpenChange={setShowAddSite}
+                    onAdd={addNewSite}
+                  />
+                </Suspense>
               </div>
-
-              {/* validator selection + dialog */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Validator Selection</CardTitle>
-                  <CardDescription>
-                    Select which validator nodes monitor your websites
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Suspense fallback={<LoadingSpinner />}>
-                    <ValidatorSelection />
-                  </Suspense>
-                </CardContent>
-              </Card>
-
-              <Suspense fallback={<LoadingSpinner />}>
-                <AddSiteDialog
-                  open={showAddSite}
-                  onOpenChange={setShowAddSite}
-                  onAdd={addNewSite}
-                />
-              </Suspense>
             </div>
           }
         />

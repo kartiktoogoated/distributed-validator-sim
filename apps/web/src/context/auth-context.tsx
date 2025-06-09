@@ -3,6 +3,8 @@ import { createContext, useContext, useState, useEffect } from 'react';
 interface User {
   email: string;
   type: 'validator' | 'client';
+  name?: string;
+  avatar?: string;
 }
 
 interface AuthContextType {

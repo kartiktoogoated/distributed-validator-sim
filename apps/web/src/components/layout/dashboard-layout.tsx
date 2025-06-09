@@ -17,7 +17,6 @@ import {
   LayoutDashboard,
   Settings,
   LogOut,
-  ChevronDown,
   Menu,
   Bell,
   ChevronLeft,
@@ -279,57 +278,66 @@ export default function DashboardLayout({
 
   // HEADER with toggle button
   const renderHeader = () => (
-    <header className="flex items-center h-16 px-4 border-b bg-background z-30 relative">
-      {isMobile && (
-        <Button
-          variant="ghost"
-          size="icon"
-          className="mr-2"
-          onClick={() => setSidebarOpen((v) => !v)}
-        >
-          <Menu className="h-6 w-6" />
-        </Button>
-      )}
-      <span className="font-bold text-lg">Dashboard</span>
-      <div className="ml-auto flex items-center gap-2">
-        <ThemeToggle />
+    <header className="border-b px-4 py-3 flex items-center justify-between bg-background z-10 sticky top-0">
+      <div className="flex items-center">
+        {isMobile && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="mr-2"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Open sidebar"
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+        )}
+        {/* Dashboard title or logo for mobile */}
+        {isMobile && !sidebarOpen && (
+          <Link to="/" className="inline-flex items-center gap-2 text-xl font-bold text-foreground">
+            <Activity className="h-6 w-6 text-primary" />
+            DeepFry
+          </Link>
+        )}
+      </div>
+      <div className="flex items-center gap-2 flex-wrap justify-end">
+        {/* Notifications Dropdown */}
         <NotificationsMenu />
+        <ThemeToggle />
+        {/* User Dropdown */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="flex items-center gap-2">
+            <Button variant="ghost" className="relative h-9 w-9 rounded-full">
               <Avatar>
                 <img
-                  src="/user2.avif"
+                  src={user?.avatar || "/user2.avif"}
                   alt="User avatar"
                   className="rounded-full object-cover w-full h-full"
                 />
                 <AvatarFallback>
-                  {user?.email.charAt(0).toUpperCase()}
+                  {user?.email ? user.email.charAt(0).toUpperCase() : 'U'}
                 </AvatarFallback>
               </Avatar>
-              <span className="max-w-[150px] truncate text-foreground">
-                {user?.email}
-              </span>
-              <ChevronDown className="h-4 w-4 text-foreground" />
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel>My Account</DropdownMenuLabel>
+          <DropdownMenuContent className="w-56" align="end" forceMount>
+            <DropdownMenuLabel className="font-normal">
+              <div className="flex flex-col space-y-1">
+                <p className="text-sm font-medium leading-none truncate">
+                  {user?.name || user?.email}
+                </p>
+                <p className="text-xs leading-none text-muted-foreground truncate">
+                  {user?.email}
+                </p>
+              </div>
+            </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link
-                to={
-                  userType === "validator"
-                    ? "/validator-dashboard/settings"
-                    : "/client-dashboard/settings"
-                }
-              >
-                <Settings className="mr-2 h-4 w-4 text-foreground" />
-                Settings
-              </Link>
+            <DropdownMenuItem onClick={() => navigate(`/client-dashboard/settings`)}>
+              <Settings className="mr-2 h-4 w-4" />
+              Settings
             </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleLogout}>
-              <LogOut className="mr-2 h-4 w-4 text-foreground" />
+              <LogOut className="mr-2 h-4 w-4" />
               Log out
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -342,9 +350,11 @@ export default function DashboardLayout({
     <TooltipProvider>
       <div className="flex h-screen">
         {renderSidebar()}
-        <div className={`flex-1 flex flex-col overflow-hidden transition-all duration-300 ${!isMobile && sidebarCollapsed ? 'ml-16' : ''}`}>
+        <div className="flex-1 overflow-auto min-w-0">
           {renderHeader()}
-          <main className="flex-1 overflow-y-auto p-6">{children}</main>
+          <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            {children}
+          </main>
         </div>
       </div>
     </TooltipProvider>

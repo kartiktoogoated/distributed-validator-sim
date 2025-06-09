@@ -21,8 +21,8 @@ interface DayData {
 }
 
 interface HistoryLog {
-  status: 'UP' | 'DOWN'
   timestamp: string
+  status: 'UP' | 'DOWN'
   url: string
 }
 
@@ -47,7 +47,6 @@ export default function UptimeChart({ siteId, siteUrl }: UptimeChartProps) {
       // group by day
       const byDay: Record<string, { up: number; total: number }> = {}
       logs.forEach(l => {
-        if (new URL(l.url).origin !== new URL(siteUrl).origin) return
         const day = format(new Date(l.timestamp), 'MMM dd')
         byDay[day] = byDay[day] || { up: 0, total: 0 }
         byDay[day].total++
@@ -79,7 +78,8 @@ export default function UptimeChart({ siteId, siteUrl }: UptimeChartProps) {
           consensus: 'UP' | 'DOWN'
           timeStamp: string
         }
-        if (new URL(msg.url).origin !== new URL(siteUrl).origin) return
+        // Only process messages for the selected site
+        if (msg.url !== siteUrl) return
 
         const day = format(new Date(msg.timeStamp), 'MMM dd')
         setData(prev => {

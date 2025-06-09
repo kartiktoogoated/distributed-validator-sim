@@ -35,17 +35,30 @@ interface LogEntry {
   status: 'UP' | 'DOWN'
   latency: number | null
   timestamp: string
+  location: string
 }
 
 const ValidatorDashboard: React.FC = () => {
   const [isStarted, setIsStarted] = useState(false)
   const [validatorId, setValidatorId] = useState<number | null>(null)
   const { toast } = useToast()
-  const skipFirstToggle = useRef(true)
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const isMounted = useRef(true)
-  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const [recentLogs, setRecentLogs] = useState<LogEntry[]>([])
+  const [metrics, setMetrics] = useState<{
+    uptime: number
+    avgLatency: number
+    totalPings: number
+  }>({
+    uptime: 0,
+    avgLatency: 0,
+    totalPings: 0
+  })
+
+  // Use environment variables for backend URLs
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+  const AGGREGATOR_BASE_URL = import.meta.env.VITE_AGGREGATOR_BASE_URL || '';
 
   const [dashboardData, setDashboardData] = useState<DashboardData>({
     uptime: 0,
@@ -57,22 +70,6 @@ const ValidatorDashboard: React.FC = () => {
   const totalMessages = useRef(0)
   const totalUpPercent = useRef(0)
 
-  // Get validator IDs on mount
-  useEffect(() => {
-    if (!isMounted.current) return;
-    
-    fetch('/api/status')
-      .then(res => res.json())
-      .then(data => {
-        if (isMounted.current && data.success && data.validators && data.validators.length > 0) {
-          setValidatorId(data.validators[0].id)
-        }
-      })
-      .catch(err => {
-        console.error('Failed to get validator ID:', err)
-      })
-  }, [])
-
   // Cleanup function for all resources
   const cleanup = () => {
     if (wsRef.current) {
@@ -83,32 +80,29 @@ const ValidatorDashboard: React.FC = () => {
       clearTimeout(reconnectTimeoutRef.current)
       reconnectTimeoutRef.current = null
     }
-    if (pollIntervalRef.current) {
-      clearInterval(pollIntervalRef.current)
-      pollIntervalRef.current = null
-    }
   }
 
-  // Initialize WebSocket connection with retry logic
+  // Initialize WebSocket connection
   const initWebSocket = () => {
-    if (!isMounted.current) return
     if (wsRef.current?.readyState === WebSocket.OPEN) return
 
     cleanup() // Clean up any existing connections
 
     const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    const ws = new WebSocket(`${proto}://${window.location.host}/api/ws`)
+    const ws = new WebSocket(`${proto}://${AGGREGATOR_BASE_URL.split('//')[1]}/api/ws`)
     wsRef.current = ws
 
     ws.onopen = () => {
       console.info('WebSocket connected')
-      // Reset counters on new connection
       totalMessages.current = 0
       totalUpPercent.current = 0
     }
 
     ws.onerror = (err) => {
       console.error('WebSocket error', err)
+      if (isMounted.current) {
+        toast({ title: 'WebSocket Error', description: 'Lost connection to live data. Please check backend services.', variant: 'destructive', duration: 5000 });
+      }
       if (wsRef.current) {
         wsRef.current.close()
         wsRef.current = null
@@ -120,26 +114,48 @@ const ValidatorDashboard: React.FC = () => {
       
       try {
         const data = JSON.parse(event.data) as {
+          type: 'validator_log';
           url: string;
           consensus: 'UP' | 'DOWN';
-          votes: Array<{ validatorId: number; status: 'UP' | 'DOWN'; weight: number }>;
-          timeStamp: string;
-        }
-        
-        // Calculate up percentage from votes
-        const upCount = data.votes.filter((v) => v.status === 'UP').length
-        const upPercent = Math.round((upCount / data.votes.length) * 100)
+          votes: Array<{ 
+            validatorId: number; 
+            status: 'UP' | 'DOWN'; 
+            latencyMs: number;
+            location: string;
+          }>;
+          timestamp: string;
+          metrics: {
+            upCount: number;
+            totalCount: number;
+            avgLatency: number;
+            uptime: number;
+          };
+        };
 
-        totalMessages.current += 1
-        totalUpPercent.current += upPercent
+        // Update metrics
+        setMetrics(prev => ({
+          uptime: data.metrics.uptime,
+          avgLatency: data.metrics.avgLatency,
+          totalPings: prev.totalPings + 1
+        }));
 
-        setDashboardData((prev) => ({
-          ...prev,
-          performanceScore: upPercent,
-          uptime:
-            Math.round((totalUpPercent.current / totalMessages.current) * 10) /
-            10,
-        }))
+        // Update recent logs
+        setRecentLogs(prev => {
+          const newLog = {
+            id: Date.now(),
+            validatorId: data.votes[0]?.validatorId || 0,
+            region: data.votes[0]?.location || 'unknown',
+            site: data.url,
+            status: data.consensus,
+            latency: data.metrics.avgLatency,
+            timestamp: data.timestamp,
+            location: data.votes[0]?.location || 'unknown'
+          };
+          return [newLog, ...prev].slice(0, 100); // Keep last 100 logs
+        });
+
+        // If logs exist, set isStarted true
+        if (!isStarted) setIsStarted(true)
       } catch (err) {
         console.error('Failed to parse WebSocket message', err)
       }
@@ -148,13 +164,12 @@ const ValidatorDashboard: React.FC = () => {
     ws.onclose = () => {
       console.info('WebSocket disconnected')
       wsRef.current = null
-      
-      // Only attempt to reconnect if component is still mounted
-      if (isMounted.current) {
-        reconnectTimeoutRef.current = setTimeout(() => {
-          initWebSocket()
-        }, 5000)
-      }
+      // Attempt to reconnect after 5 seconds
+      reconnectTimeoutRef.current = setTimeout(() => {
+        if (isMounted.current) {
+          initWebSocket();
+        }
+      }, 5000);
     }
   }
 
@@ -162,8 +177,10 @@ const ValidatorDashboard: React.FC = () => {
   const fetchLogs = async () => {
     if (!isMounted.current || !validatorId) return;
     try {
-      const res = await fetch(`/api/logs?validatorId=${validatorId}`)
-      if (!res.ok) throw new Error('Failed to fetch logs')
+      const res = await fetch(`${API_BASE_URL}/api/logs?validatorId=${validatorId}`)
+      if (!res.ok) {
+        throw new Error('Failed to fetch logs');
+      }
       const { logs }: { logs: LogEntry[] } = await res.json()
       if (!isMounted.current) return;
       
@@ -199,93 +216,118 @@ const ValidatorDashboard: React.FC = () => {
       if (count > 0) setIsStarted(true)
     } catch (err: any) {
       console.error('Failed to fetch logs', err)
+      if (isMounted.current) {
+        toast({ title: 'Backend Unreachable', description: 'Could not fetch logs from backend.', variant: 'destructive', duration: 5000 });
+      }
     }
   }
 
-  // Initialize WebSocket and start polling on mount
+  // Effect for polling backend status and initializing connections
   useEffect(() => {
-    isMounted.current = true
-    initWebSocket()
-    if (isStarted) fetchLogs()
+    isMounted.current = true;
+    let statusPollInterval: NodeJS.Timeout | null = null;
 
-    if (isStarted) {
-      pollIntervalRef.current = setInterval(fetchLogs, 60_000) // 60000ms
-    }
-    
+    const pollBackendStatus = async () => {
+      try {
+        // Optimistically assume reachable for the check. If it fails, set to false.
+        const res = await fetch(`${API_BASE_URL}/api/status`);
+        if (!res.ok) {
+          throw new Error(`Failed to fetch validator status: ${res.statusText}`);
+        }
+        const data = await res.json();
+        if (isMounted.current && data.success && data.validators && data.validators.length > 0) {
+          setValidatorId(data.validators[0].id);
+          if (!isStarted) {
+            // Reset counters when stopping
+            totalMessages.current = 0
+            totalUpPercent.current = 0
+            setDashboardData(prev => ({
+              ...prev,
+              performanceScore: 0,
+              uptime: 0
+            }))
+          }
+        } else {
+          setIsStarted(false);
+        }
+      } catch (err: any) {
+        console.error('Failed to get validator ID or backend unreachable:', err);
+        if (isMounted.current) {
+          setIsStarted(false);
+        }
+      }
+    };
+
+    // Start polling backend status immediately and then every 10 seconds
+    pollBackendStatus(); 
+    statusPollInterval = setInterval(pollBackendStatus, 10000);
+
     return () => {
-      isMounted.current = false
-      cleanup()
+      isMounted.current = false;
+      cleanup(); // Cleans up WS and log polling intervals
+      if (statusPollInterval) {
+        clearInterval(statusPollInterval);
+      }
+    };
+  }, []); // Only run once on mount for setting up the initial poll
+
+  // Effect for WebSocket and log fetching, dependent on backendReachable and isStarted
+  useEffect(() => {
+    if (isStarted) {
+      initWebSocket();
+      fetchLogs();
+    } else {
+      // If backend becomes unreachable, ensure WS and log polling are stopped/cleaned
+      cleanup(); // This will clear WS and log polling intervals
     }
-  }, [isStarted])
+  }, [isStarted, validatorId]);
 
   // Handle validator start/stop with better error handling
   useEffect(() => {
-    if (skipFirstToggle.current) {
-      skipFirstToggle.current = false
-      return
-    }
-
-    const path = isStarted ? '/api/simulate/start' : '/api/simulate/stop'
-    fetch(path, { 
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ validatorId })
-    })
-      .then(async (res) => {
+    const toggleValidatorOnBackend = async () => {
+      try {
+        const path = isStarted ? `${AGGREGATOR_BASE_URL}/api/simulate/start` : `${AGGREGATOR_BASE_URL}/api/simulate/stop`;
+        const res = await fetch(path, { 
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ validatorId })
+        });
         if (!res.ok) {
-          const error = await res.json().catch(() => ({ message: 'Unknown error' }))
-          throw new Error(error.message || 'Failed to toggle validator')
+          throw new Error(`Failed to toggle validator: ${res.statusText}`);
         }
         
         if (!isStarted) {
           // Reset counters when stopping
-          totalMessages.current = 0
-          totalUpPercent.current = 0
-          setDashboardData(prev => ({
+          setMetrics(prev => ({
             ...prev,
-            performanceScore: 0,
-            uptime: 0
-          }))
+            uptime: 0,
+            totalPings: 0
+          }));
         }
-
-        toast({
-          title: isStarted ? 'Validator Started' : 'Validator Stopped',
-          description: `Validator ${validatorId} is now ${isStarted ? 'running' : 'stopped'}`,
-          variant: isStarted ? 'default' : 'destructive'
-        })
-      })
-      .catch((err) => {
-        console.error(`Failed to ${isStarted ? 'start' : 'stop'} validator`, err)
-        toast({
-          title: 'Error',
-          description: err.message || 'Failed to toggle validator',
-          variant: 'destructive',
-        })
-        setIsStarted((prev) => !prev)
-      })
-  }, [isStarted, toast, validatorId])
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      isMounted.current = false
-      cleanup()
-    }
-  }, [])
+      } catch (err: any) {
+        console.error(`Failed to ${isStarted ? 'start' : 'stop'} validator:`, err);
+        if (isMounted.current) {
+          toast({
+            title: `Failed to ${isStarted ? 'start' : 'stop'} validator`,
+            description: err.message || 'Could not reach backend service.',
+            variant: 'destructive',
+            duration: 5000,
+          });
+        }
+      }
+    };
+    toggleValidatorOnBackend();
+  }, [isStarted]); // Depend on isStarted only
 
   const toggleValidator = () => {
-    setIsStarted((prev) => !prev)
+    if (!validatorId) {
+      toast({ title: 'Error', description: 'Validator ID not loaded yet.', variant: 'destructive' });
+      return;
+    }
+    setIsStarted(prev => !prev)
   }
-
-  // Handler to increment ping count when a new ping is detected
-  const handleNewPing = () => {
-    setDashboardData(prev => ({
-      ...prev,
-      pingCount: prev.pingCount + 1
-    }));
-  };
 
   return (
     <DashboardLayout userType="validator">
@@ -347,13 +389,13 @@ const ValidatorDashboard: React.FC = () => {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold">
-                      {dashboardData.uptime}%
+                      {metrics.uptime.toFixed(1)}%
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
                       Last 30 days
                     </p>
                     <Progress
-                      value={dashboardData.uptime}
+                      value={metrics.uptime}
                       className="h-2 mt-3"
                     />
                   </CardContent>
@@ -418,7 +460,7 @@ const ValidatorDashboard: React.FC = () => {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <RecentPings validatorId={validatorId} onNewPing={() => handleNewPing()} />
+                  <RecentPings validatorId={validatorId} logs={recentLogs} />
                 </CardContent>
               </Card>
 
