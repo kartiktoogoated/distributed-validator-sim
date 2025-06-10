@@ -7,7 +7,7 @@ import { WebSocketServer } from 'ws';
 import { Kafka, logLevel } from 'kafkajs';
 import prisma from '../prismaClient';
 import nodemailer from 'nodemailer';
-import { info, warn, error as logError } from '../../utils/logger';
+import { info, error as logError } from '../../utils/logger';
 import { AppError } from '../../utils/errors';
 import { sendToTopic } from '../services/producer';
 import { mailConfig } from '../config/mailConfig';

@@ -132,7 +132,7 @@ services:
         echo '🕒 Waiting for DB...' &&
         until nc -z db 5432; do sleep 1; done &&
         echo '🕒 Waiting for Aggregator...' &&
-        until nc -z aggregator 3000; do sleep 1; done &&
+        until curl -s http://aggregator:3000/health > /dev/null; do sleep 1; done &&
         echo '✅ All services ready, running migrations...' &&
         cd /app/packages/db &&
         npx prisma migrate deploy &&
@@ -160,7 +160,7 @@ services:
         echo '🕒 Waiting for DB...' &&
         until nc -z db 5432; do sleep 1; done &&
         echo '🕒 Waiting for Aggregator...' &&
-        until nc -z aggregator 3000; do sleep 1; done &&
+        until curl -s http://aggregator:3000/health > /dev/null; do sleep 1; done &&
         echo '✅ All services ready, running migrations...' &&
         cd /app/packages/db &&
         npx prisma migrate deploy &&

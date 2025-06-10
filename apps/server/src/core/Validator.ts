@@ -237,8 +237,8 @@ export class Validator {
       clearTimeout(to);
     }
 
-    // Site is considered DOWN only if both ICMP and HTTP are DOWN
-    const finalStatus: Status = (icmpStatus === "DOWN" && httpStatus === "DOWN") ? "DOWN" : "UP";
+    // New final status logic (prioritize HTTP)
+    const finalStatus: Status = httpStatus === "DOWN" ? "DOWN" : icmpStatus;
 
     let reportedLatency = 0;
     if (finalStatus === "UP") {
