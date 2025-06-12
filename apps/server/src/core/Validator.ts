@@ -37,6 +37,9 @@ async function cachedLookup(hostname: string) {
 
 // ── Validator Class ───────────────────────────────
 export class Validator {
+  stopPinging() {
+    throw new Error("Method not implemented.");
+  }
   public readonly id: number;
   public peers: string[] = [];
   private lastVotes = new Map<string, Vote>();

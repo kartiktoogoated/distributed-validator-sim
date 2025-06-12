@@ -9,13 +9,10 @@ import Footer from '@/components/layout/footer';
 
 const PricingPage = () => {
   const [userType, setUserType] = useState<'client' | 'validator'>('client');
-  const [isAnimating, setIsAnimating] = useState(false);
 
   const handleTypeChange = (type: 'client' | 'validator') => {
     if (type === userType) return;
-    setIsAnimating(true);
     setUserType(type);
-    setTimeout(() => setIsAnimating(false), 500);
   };
 
   const clientPlans = [
@@ -153,12 +150,11 @@ const PricingPage = () => {
             </div>
           </div>
 
-          <div className={`grid grid-cols-1 md:grid-cols-3 gap-8 ${isAnimating ? 'opacity-0' : 'opacity-100'} transition-opacity duration-300`}>
-            {activePlans.map((plan, index) => (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {activePlans.map((plan) => (
               <Card 
                 key={plan.name} 
                 className={`pricing-card relative hover-glow ${plan.popular ? 'border-primary shadow-lg' : ''}`}
-                style={{ '--animation-order': index } as React.CSSProperties}
               >
                 {plan.popular && (
                   <Badge className="absolute -top-2 -right-2 bg-primary">Popular</Badge>

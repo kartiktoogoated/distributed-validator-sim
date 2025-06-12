@@ -16,9 +16,13 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/hooks/use-toast'
-import { Plus, Globe, Activity, Clock, Zap, ExternalLink, Loader2, Users } from 'lucide-react'
+import { Plus, Globe, Activity, Clock, Zap, ExternalLink, Loader2, Users, CalendarIcon } from 'lucide-react'
 import { comingSoon } from '@/lib/utils'
 import LiveConsensusStatus from '@/components/ui/LiveConsensusStatus'
+import { Calendar } from '@/components/ui/calendar'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { format } from 'date-fns'
+import { SelectSingleEventHandler } from 'react-day-picker'
 
 // Lazy load components
 const SitesList = lazy(() => import('@/components/clients/sites-list'))
@@ -54,6 +58,7 @@ const ClientDashboard: React.FC = () => {
   const [selectedSiteId, setSelectedSiteId] = useState<number | null>(null)
   const [showAddSite, setShowAddSite] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [selectedLogDate, setSelectedLogDate] = useState<Date | undefined>(new Date());
   const { toast } = useToast()
   const navigate = useNavigate()
   const location = useLocation()
@@ -152,6 +157,25 @@ const ClientDashboard: React.FC = () => {
   const avgResponseTime = siteCount
     ? Math.round(sites.reduce((sum, s) => sum + s.responseTime, 0) / siteCount)
     : 0
+
+  const handleDownloadLogs = async () => {
+    if (!selectedSite || !selectedLogDate) {
+      toast({ title: 'Error', description: 'Please select a website and a date.', variant: 'destructive' })
+      return
+    }
+
+    const formattedDate = format(selectedLogDate, 'yyyy-MM-dd')
+    const apiUrl = `/api/websites/${selectedSite.id}/logs?untilDate=${formattedDate}`
+
+    try {
+      // For demonstration, we'll just log the URL and simulate download
+      console.log(`Attempting to download logs from: ${apiUrl}`)
+
+      toast({ title: 'Download Initiated', description: `Logs for ${selectedSite.url} until ${formattedDate} will be downloaded. (Simulated)`, duration: 3000 })
+    } catch (err: any) {
+      toast({ title: 'Download Error', description: err.message, variant: 'destructive' })
+    }
+  }
 
   return (
     <DashboardLayout userType="client">
@@ -305,7 +329,8 @@ const ClientDashboard: React.FC = () => {
                           <TabsList className="mb-4">
                             <TabsTrigger value="uptime">Uptime</TabsTrigger>
                             <TabsTrigger value="performance">Performance</TabsTrigger>
-                            <TabsTrigger value="locations">Validators</TabsTrigger>
+                            <TabsTrigger value="validators">Validators</TabsTrigger>
+                            <TabsTrigger value="logs">Logs</TabsTrigger>
                           </TabsList>
                           <TabsContent value="uptime">
                             <Suspense fallback={<LoadingSpinner />}>
@@ -323,10 +348,49 @@ const ClientDashboard: React.FC = () => {
                               />
                             </Suspense>
                           </TabsContent>
-                          <TabsContent value="locations">
+                          <TabsContent value="validators">
                             <Suspense fallback={<LoadingSpinner />}>
                               <ClientMap />
                             </Suspense>
+                          </TabsContent>
+                          <TabsContent value="logs">
+                            <div className="flex flex-col space-y-4">
+                              <Card>
+                                <CardHeader>
+                                  <CardTitle>Download Logs</CardTitle>
+                                  <CardDescription>
+                                    Select a date to download all logs up to that point for {selectedSite.url}.
+                                  </CardDescription>
+                                </CardHeader>
+                                <CardContent className="flex flex-col space-y-4 sm:flex-row sm:items-center sm:space-x-4 sm:space-y-0">
+                                  <Popover>
+                                    <PopoverTrigger asChild>
+                                      <Button
+                                        variant={"outline"}
+                                        className={"w-[200px] justify-start text-left font-normal flex-shrink-0"}
+                                      >
+                                        <CalendarIcon className="mr-2 h-4 w-4" />
+                                        {selectedLogDate ? format(selectedLogDate, "PPP") : <span>Pick a date</span>}
+                                      </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-auto p-4 shadow-md bg-popover border" align="start" side="bottom" sideOffset={10}>
+                                      <Calendar
+                                        mode="single"
+                                        selected={selectedLogDate}
+                                        onSelect={setSelectedLogDate as SelectSingleEventHandler}
+                                        initialFocus
+                                        captionLayout="buttons"
+                                        fromYear={2020}
+                                        toYear={new Date().getFullYear()}
+                                      />
+                                    </PopoverContent>
+                                  </Popover>
+                                  <Button onClick={handleDownloadLogs} disabled={!selectedLogDate} className="w-auto flex-shrink-0">
+                                    Download Logs
+                                  </Button>
+                                </CardContent>
+                              </Card>
+                            </div>
                           </TabsContent>
                         </Tabs>
                       ) : (

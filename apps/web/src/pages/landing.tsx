@@ -24,6 +24,7 @@ import HeroAnimation from '@/components/animations/hero-animation';
 import Stats from '@/components/landing/stats';
 import CryptoCard from '@/components/web3/crypto-card';
 import { motion } from 'framer-motion';
+import NetworkAnimation from '@/components/animations/network-animation';
 
 const LandingPage = () => {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
@@ -251,7 +252,7 @@ const LandingPage = () => {
         </motion.div>
       </motion.section>
 
-      {/* Features Section */}
+      {/* Features Section - Reinstated */}
       <motion.section
         id="learn-more"
         className="py-20 px-4 md:px-6 lg:px-8"
@@ -331,6 +332,25 @@ const LandingPage = () => {
         </div>
       </motion.section>
 
+      {/* Network Animation Section */}
+      <motion.section
+        className="py-20 px-4 md:px-6 lg:px-8 bg-background"
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, amount: 0.3 }}
+        variants={sectionVariants}
+      >
+        <div className="container max-w-6xl mx-auto text-center mb-16">
+          <motion.h2 variants={cardVariants} className="text-3xl md:text-4xl font-bold mb-6">Our Distributed Network</motion.h2>
+          <motion.p variants={cardVariants} className="text-lg text-muted-foreground max-w-2xl mx-auto">
+            Visualize the real-time activity and health of our decentralized validator network.
+          </motion.p>
+        </div>
+        <motion.div variants={cardVariants} className="container max-w-6xl mx-auto">
+          <NetworkAnimation />
+        </motion.div>
+      </motion.section>
+
       {/* CTA Section */}
       <section className="py-20 px-4 md:px-6 lg:px-8 text-center bg-primary text-primary-foreground">
         <motion.div
@@ -386,13 +406,22 @@ const LandingPage = () => {
                 </button>
                 {openFaq === index && (
                   <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.3, ease: 'easeOut' }}
+                    layout
+                    initial={{ opacity: 0, scaleY: 0 }}
+                    animate={{ opacity: 1, scaleY: 1 }}
+                    exit={{ opacity: 0, scaleY: 0 }}
+                    transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+                    style={{ transformOrigin: "top", overflow: "hidden" }}
                     className="p-6 pt-0 text-muted-foreground"
                   >
-                    <p>{faq.answer}</p>
+                    <motion.p
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.2, delay: 0.1 }}
+                    >
+                      {faq.answer}
+                    </motion.p>
                   </motion.div>
                 )}
               </div>
