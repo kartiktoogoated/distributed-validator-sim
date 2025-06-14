@@ -16,9 +16,10 @@ interface ConsensusPayload {
 
 interface LiveConsensusStatusProps {
   compact?: boolean;
+  monitoredUrls: string[];
 }
 
-export default function LiveConsensusStatus({ compact }: LiveConsensusStatusProps) {
+export default function LiveConsensusStatus({ compact, monitoredUrls }: LiveConsensusStatusProps) {
   const [statuses, setStatuses] = useState<Record<string, ConsensusPayload>>({});
 
   // Fetch initial consensus from REST API
@@ -29,17 +30,20 @@ export default function LiveConsensusStatus({ compact }: LiveConsensusStatusProp
         if (data.success && data.consensus) {
           const initialStatuses: Record<string, ConsensusPayload> = {};
           data.consensus.forEach((item: any) => {
-            initialStatuses[item.site] = {
-              url: item.site,
-              consensus: item.status,
-              votes: [],
-              timestamp: item.timestamp,
-            };
+            // Only add if the URL is in the monitoredUrls list
+            if (monitoredUrls.includes(item.site)) {
+              initialStatuses[item.site] = {
+                url: item.site,
+                consensus: item.status,
+                votes: [],
+                timestamp: item.timestamp,
+              };
+            }
           });
           setStatuses(initialStatuses);
         }
       });
-  }, []);
+  }, [monitoredUrls]); // Re-fetch when monitoredUrls changes
 
   // Listen for live updates via WebSocket
   useEffect(() => {
@@ -47,14 +51,24 @@ export default function LiveConsensusStatus({ compact }: LiveConsensusStatusProp
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data) as ConsensusPayload;
-        setStatuses((prev) => ({ ...prev, [data.url]: data }));
+        // Only update if the URL is still in the monitoredUrls list
+        if (monitoredUrls.includes(data.url)) {
+          setStatuses((prev) => ({ ...prev, [data.url]: data }));
+        } else {
+          // If a site is no longer monitored, remove it from statuses
+          setStatuses((prev) => {
+            const newState = { ...prev };
+            delete newState[data.url];
+            return newState;
+          });
+        }
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       } catch (e) {
         // Ignore invalid messages
       }
     };
     return () => ws.close();
-  }, []);
+  }, [monitoredUrls]);
 
   if (Object.keys(statuses).length === 0) return <div>No consensus data yet.</div>;
 

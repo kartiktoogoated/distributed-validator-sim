@@ -181,7 +181,7 @@ export default function ResponseTimeChart({ siteId, siteUrl }: Props) {
             tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
           />
           <YAxis
-            domain={['dataMin - 10', 'dataMax + 10']}
+            domain={[0, 'dataMax + 10']}
             tickLine={false}
             axisLine={{ stroke: 'hsl(var(--border))' }}
             tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}

@@ -199,7 +199,7 @@ const ClientDashboard: React.FC = () => {
                 </div>
 
                 {/* Live Consensus Status */}
-                <LiveConsensusStatus />
+                <LiveConsensusStatus monitoredUrls={sites.map(s => s.url)} />
 
                 {/* stats */}
                 <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-5">
@@ -257,7 +257,7 @@ const ClientDashboard: React.FC = () => {
                       <Users className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                      <LiveConsensusStatus compact />
+                      <LiveConsensusStatus compact monitoredUrls={sites.map(s => s.url)} />
                     </CardContent>
                   </Card>
                 </div>

@@ -74,8 +74,7 @@ const LandingPage = () => {
       <motion.section
         className="py-20 px-4 md:px-6 lg:px-8 flex flex-col items-center"
         initial="hidden"
-        whileInView="visible"
-        viewport={{ once: true, amount: 0.3 }}
+        animate="visible"
         variants={sectionVariants}
       >
         <div className="container max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
