@@ -1,0 +1,73 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Validator {
+  id       Int             @id @default(autoincrement())
+  location String
+  logs     ValidatorLog[]
+  meta     ValidatorMeta?
+  wallet    String?   @unique
+  lastSeen  DateTime? @updatedAt
+}
+
+model ValidatorLog {
+  id          Int       @id @default(autoincrement())
+  validatorId Int
+  site        String
+  status      String
+  latency     Int      
+  timestamp   DateTime  @default(now())
+  location    String?
+
+  validator   Validator @relation(fields: [validatorId], references: [id])
+}
+
+model ValidatorMeta {
+  id             Int       @id @default(autoincrement())
+  validatorId    Int       @unique
+  correctVotes   Float     @default(0)
+  totalVotes     Float     @default(0)
+  averageLatency Float     @default(0)
+  uptimePercent  Float     @default(100)
+  weight         Float     @default(1)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  validator      Validator @relation(fields: [validatorId], references: [id])
+}
+
+model PendingUser {
+  id         Int      @id @default(autoincrement())
+  email      String   @unique
+  password   String
+  otp        String
+  otpExpires DateTime
+  createdAt  DateTime @default(now())
+}
+
+model User {
+  id         String    @id @default(uuid())
+  email      String    @unique
+  password   String
+  isVerified Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+
+  websites   Website[]
+}
+
+model Website {
+  id          String   @id @default(uuid())
+  url         String   @unique
+  description String?
+  userId      String
+  paused      Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id])
+}
