@@ -9,7 +9,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { useToast } from '@/hooks/use-toast'
@@ -36,15 +35,30 @@ interface LogEntry {
   status: 'UP' | 'DOWN'
   latency: number | null
   timestamp: string
+  location: string
 }
 
-const POLL_INTERVAL_MS = 60_000
-
 const ValidatorDashboard: React.FC = () => {
-  const [isStarted, setIsStarted] = useState(
-    () => localStorage.getItem('validatorStarted') === 'true'
-  )
+  const [isStarted, setIsStarted] = useState(false)
+  const [validatorId, setValidatorId] = useState<number | null>(null)
   const { toast } = useToast()
+  const wsRef = useRef<WebSocket | null>(null)
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const isMounted = useRef(true)
+  const [recentLogs, setRecentLogs] = useState<LogEntry[]>([])
+  const [metrics, setMetrics] = useState<{
+    uptime: number
+    avgLatency: number
+    totalPings: number
+  }>({
+    uptime: 0,
+    avgLatency: 0,
+    totalPings: 0
+  })
+
+  // Use environment variables for backend URLs
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+  const AGGREGATOR_BASE_URL = import.meta.env.VITE_AGGREGATOR_BASE_URL || '';
 
   const [dashboardData, setDashboardData] = useState<DashboardData>({
     uptime: 0,
@@ -56,129 +70,263 @@ const ValidatorDashboard: React.FC = () => {
   const totalMessages = useRef(0)
   const totalUpPercent = useRef(0)
 
-  //
-  // 1) Seed initial round from GET /api/simulate
-  //
-  useEffect(() => {
-    if (!isStarted) return
-    fetch('/api/simulate')
-      .then((r) => r.json())
-      .then(({ payloads }: any) => {
-        if (!Array.isArray(payloads)) return
-        const count = payloads.length
-        const upCount = payloads.filter((p: any) => p.consensus === 'UP').length
-        const uptime = count ? Math.round((upCount / count) * 100) : 0
-        const last = payloads[payloads.length - 1]
-        const lastPing = last?.timeStamp || ''
-        const perf =
-          last && Array.isArray(last.votes)
-            ? Math.round(
-                (last.votes.filter((v: any) => v.status === 'UP').length /
-                  last.votes.length) *
-                  100
-              )
-            : 0
+  // Cleanup function for all resources
+  const cleanup = () => {
+    if (wsRef.current) {
+      wsRef.current.close()
+      wsRef.current = null
+    }
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current)
+      reconnectTimeoutRef.current = null
+    }
+  }
 
-        // reset WS counters
-        totalMessages.current = 0
-        totalUpPercent.current = 0
+  // Initialize WebSocket connection
+  const initWebSocket = () => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) return
 
-        setDashboardData({
-          pingCount: count,
-          uptime,
-          lastPing,
-          performanceScore: perf,
-        })
-      })
-      .catch((err) => console.error('Initial simulate fetch failed', err))
-  }, [isStarted])
+    cleanup() // Clean up any existing connections
 
-  //
-  // 2) Poll `/api/logs` every minute to update pingCount, uptime, lastPing
-  //
+    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
+    const ws = new WebSocket(`${proto}://${AGGREGATOR_BASE_URL.split('//')[1]}/api/ws`)
+    wsRef.current = ws
+
+    ws.onopen = () => {
+      console.info('WebSocket connected')
+      totalMessages.current = 0
+      totalUpPercent.current = 0
+    }
+
+    ws.onerror = (err) => {
+      console.error('WebSocket error', err)
+      if (isMounted.current) {
+        toast({ title: 'WebSocket Error', description: 'Lost connection to live data. Please check backend services.', variant: 'destructive', duration: 5000 });
+      }
+      if (wsRef.current) {
+        wsRef.current.close()
+        wsRef.current = null
+      }
+    }
+
+    ws.onmessage = (event) => {
+      if (!isMounted.current) return;
+      
+      try {
+        const data = JSON.parse(event.data) as {
+          type: 'validator_log';
+          url: string;
+          consensus: 'UP' | 'DOWN';
+          votes: Array<{ 
+            validatorId: number; 
+            status: 'UP' | 'DOWN'; 
+            latencyMs: number;
+            location: string;
+          }>;
+          timestamp: string;
+          metrics: {
+            upCount: number;
+            totalCount: number;
+            avgLatency: number;
+            uptime: number;
+          };
+        };
+
+        // Update metrics
+        setMetrics(prev => ({
+          uptime: data.metrics.uptime,
+          avgLatency: data.metrics.avgLatency,
+          totalPings: prev.totalPings + 1
+        }));
+
+        // Update recent logs
+        setRecentLogs(prev => {
+          const newLog = {
+            id: Date.now(),
+            validatorId: data.votes[0]?.validatorId || 0,
+            region: data.votes[0]?.location || 'unknown',
+            site: data.url,
+            status: data.consensus,
+            latency: data.metrics.avgLatency,
+            timestamp: data.timestamp,
+            location: data.votes[0]?.location || 'unknown'
+          };
+          return [newLog, ...prev].slice(0, 100); // Keep last 100 logs
+        });
+
+        // If logs exist, set isStarted true
+        if (!isStarted) setIsStarted(true)
+      } catch (err) {
+        console.error('Failed to parse WebSocket message', err)
+      }
+    }
+
+    ws.onclose = () => {
+      console.info('WebSocket disconnected')
+      wsRef.current = null
+      // Attempt to reconnect after 5 seconds
+      reconnectTimeoutRef.current = setTimeout(() => {
+        if (isMounted.current) {
+          initWebSocket();
+        }
+      }, 5000);
+    }
+  }
+
+  // Fetch logs function with error handling
   const fetchLogs = async () => {
+    if (!isMounted.current || !validatorId) return;
     try {
-      const res = await fetch('/api/logs')
+      const res = await fetch(`${API_BASE_URL}/api/logs?validatorId=${validatorId}`)
+      if (!res.ok) {
+        throw new Error('Failed to fetch logs');
+      }
       const { logs }: { logs: LogEntry[] } = await res.json()
-      const sorted = logs.sort(
-        (a, b) =>
-          new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-      )
+      if (!isMounted.current) return;
+      
+      // Deduplicate logs by site, timestamp, and validatorId
+      const seen = new Set<string>();
+      const uniqueLogs = logs.filter(log => {
+        if (log.validatorId === 0) return false; // Skip aggregator logs
+        const key = `${log.site}-${log.timestamp}-${log.validatorId}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      const sorted = uniqueLogs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
       const count = sorted.length
       const upCount = sorted.filter((l) => l.status === 'UP').length
       const uptime = count ? Math.round((upCount / count) * 100) : 0
       const lastPing = sorted[0]?.timestamp || ''
 
+      // Calculate performance score from recent logs (last 10)
+      const recentLogs = sorted.slice(0, 10)
+      const recentUpCount = recentLogs.filter((l) => l.status === 'UP').length
+      const performanceScore = recentLogs.length ? Math.round((recentUpCount / recentLogs.length) * 100) : 0
+      
       setDashboardData((prev) => ({
         ...prev,
         pingCount: count,
         uptime,
         lastPing,
+        performanceScore,
       }))
+      // If logs exist, set isStarted true
+      if (count > 0) setIsStarted(true)
     } catch (err: any) {
       console.error('Failed to fetch logs', err)
+      if (isMounted.current) {
+        toast({ title: 'Backend Unreachable', description: 'Could not fetch logs from backend.', variant: 'destructive', duration: 5000 });
+      }
     }
   }
 
+  // Effect for polling backend status and initializing connections
   useEffect(() => {
-    fetchLogs()
-    const id = setInterval(fetchLogs, POLL_INTERVAL_MS)
-    return () => clearInterval(id)
-  }, [])
+    isMounted.current = true;
+    let statusPollInterval: NodeJS.Timeout | null = null;
 
-  //
-  // 3) Open WebSocket once for live performance updates
-  //
-  useEffect(() => {
-    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    const ws = new WebSocket(`${proto}://${window.location.host}/api/ws`)
-
-    ws.onopen = () => console.info('WebSocket connected')
-    ws.onerror = (err) => console.error('WebSocket error', err)
-
-    ws.onmessage = (event) => {
-      const { votes } = JSON.parse(event.data) as {
-        votes: { status: 'UP' | 'DOWN'; weight: number }[]
+    const pollBackendStatus = async () => {
+      try {
+        // Optimistically assume reachable for the check. If it fails, set to false.
+        const res = await fetch(`${API_BASE_URL}/api/status`);
+        if (!res.ok) {
+          throw new Error(`Failed to fetch validator status: ${res.statusText}`);
+        }
+        const data = await res.json();
+        if (isMounted.current && data.success && data.validators && data.validators.length > 0) {
+          setValidatorId(data.validators[0].id);
+          if (!isStarted) {
+            // Reset counters when stopping
+            totalMessages.current = 0
+            totalUpPercent.current = 0
+            setDashboardData(prev => ({
+              ...prev,
+              performanceScore: 0,
+              uptime: 0
+            }))
+          }
+        } else {
+          setIsStarted(false);
+        }
+      } catch (err: any) {
+        console.error('Failed to get validator ID or backend unreachable:', err);
+        if (isMounted.current) {
+          setIsStarted(false);
+        }
       }
-      const upCount = votes.filter((v) => v.status === 'UP').length
-      const upPercent = Math.round((upCount / votes.length) * 100)
+    };
 
-      totalMessages.current += 1
-      totalUpPercent.current += upPercent
+    // Start polling backend status immediately and then every 10 seconds
+    pollBackendStatus(); 
+    statusPollInterval = setInterval(pollBackendStatus, 10000);
 
-      setDashboardData((prev) => ({
-        ...prev,
-        performanceScore: upPercent,
-        uptime:
-          Math.round((totalUpPercent.current / totalMessages.current) * 10) /
-          10,
-      }))
-    }
+    return () => {
+      isMounted.current = false;
+      cleanup(); // Cleans up WS and log polling intervals
+      if (statusPollInterval) {
+        clearInterval(statusPollInterval);
+      }
+    };
+  }, []); // Only run once on mount for setting up the initial poll
 
-    return () => ws.close()
-  }, [])
-
-  //
-  // 4) Start / Stop single-validator on toggle
-  //
+  // Effect for WebSocket and log fetching, dependent on backendReachable and isStarted
   useEffect(() => {
-    const path = isStarted ? '/api/simulate/start' : '/api/simulate/stop'
-    fetch(path, { method: 'POST' }).catch((err) => {
-      console.error(`Failed to ${isStarted ? 'start' : 'stop'} validator`, err)
-      toast({
-        title: 'Error',
-        description: err.message,
-        variant: 'destructive',
-      })
-      // rollback
-      setIsStarted((prev) => !prev)
-      localStorage.setItem('validatorStarted', String(!isStarted))
-    })
-    localStorage.setItem('validatorStarted', String(isStarted))
-  }, [isStarted, toast])
+    if (isStarted) {
+      initWebSocket();
+      fetchLogs();
+    } else {
+      // If backend becomes unreachable, ensure WS and log polling are stopped/cleaned
+      cleanup(); // This will clear WS and log polling intervals
+    }
+  }, [isStarted, validatorId]);
+
+  // Handle validator start/stop with better error handling
+  useEffect(() => {
+    const toggleValidatorOnBackend = async () => {
+      try {
+        const path = isStarted ? `${AGGREGATOR_BASE_URL}/api/simulate/start` : `${AGGREGATOR_BASE_URL}/api/simulate/stop`;
+        const res = await fetch(path, { 
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ validatorId })
+        });
+        if (!res.ok) {
+          throw new Error(`Failed to toggle validator: ${res.statusText}`);
+        }
+        
+        if (!isStarted) {
+          // Reset counters when stopping
+          setMetrics(prev => ({
+            ...prev,
+            uptime: 0,
+            totalPings: 0
+          }));
+        }
+      } catch (err: any) {
+        console.error(`Failed to ${isStarted ? 'start' : 'stop'} validator:`, err);
+        if (isMounted.current) {
+          toast({
+            title: `Failed to ${isStarted ? 'start' : 'stop'} validator`,
+            description: err.message || 'Could not reach backend service.',
+            variant: 'destructive',
+            duration: 5000,
+          });
+        }
+      }
+    };
+    toggleValidatorOnBackend();
+  }, [isStarted]); // Depend on isStarted only
 
   const toggleValidator = () => {
-    setIsStarted((prev) => !prev)
+    if (!validatorId) {
+      toast({ title: 'Error', description: 'Validator ID not loaded yet.', variant: 'destructive' });
+      return;
+    }
+    setIsStarted(prev => !prev)
   }
 
   return (
@@ -188,39 +336,28 @@ const ValidatorDashboard: React.FC = () => {
           path="/"
           element={
             <div className="max-w-[1600px] mx-auto space-y-6">
-              {/* Header */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <h1 className="text-3xl font-bold tracking-tight">
                     Validator Dashboard
                   </h1>
-                  <p className="text-muted-foreground">
-                    Monitor and manage your validator node
-                  </p>
                 </div>
                 <div className="flex gap-2">
-                  <Button
-                    onClick={fetchLogs}
-                    variant="outline"
-                  >
+                  <Button onClick={fetchLogs} variant="outline" disabled={!validatorId}>
                     Reload
                   </Button>
                   <Button
                     onClick={toggleValidator}
-                    className={
-                      isStarted
-                        ? 'bg-red-500 hover:bg-red-600'
-                        : 'bg-green-500 hover:bg-green-600'
-                    }
+                    disabled={!validatorId}
+                    className={isStarted ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'}
                   >
                     {isStarted ? 'Stop Validator' : 'Start Validator'}
                   </Button>
                 </div>
               </div>
 
-              {/* Summary Cards */}
+              {/* Summary */}
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                {/* Status */}
                 <Card>
                   <CardHeader className="flex justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Status</CardTitle>
@@ -245,7 +382,6 @@ const ValidatorDashboard: React.FC = () => {
                   </CardContent>
                 </Card>
 
-                {/* Uptime */}
                 <Card>
                   <CardHeader className="flex justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Uptime</CardTitle>
@@ -253,21 +389,20 @@ const ValidatorDashboard: React.FC = () => {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold">
-                      {dashboardData.uptime}%
+                      {metrics.uptime.toFixed(1)}%
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
                       Last 30 days
                     </p>
                     <Progress
-                      value={dashboardData.uptime}
+                      value={metrics.uptime}
                       className="h-2 mt-3"
                     />
                   </CardContent>
                 </Card>
 
-                {/* Earnings */}
                 <Card className="relative overflow-hidden">
-                  <div className="absolute -right-4 -top-4 bg-primary text-white py-1 px-3 rotate-45 text-xs font-semibold">
+                  <div className="absolute top-2 right-2 z-10 bg-muted text-muted-foreground px-2 py-0.5 rounded text-[10px] font-semibold border border-border shadow-sm opacity-80 pointer-events-none">
                     Coming Soon
                   </div>
                   <CardHeader className="flex justify-between space-y-0 pb-2">
@@ -286,7 +421,6 @@ const ValidatorDashboard: React.FC = () => {
                   </CardContent>
                 </Card>
 
-                {/* Pings */}
                 <Card>
                   <CardHeader className="flex justify-between space-y-0 pb-2">
                     <CardTitle className="text-sm font-medium">Pings</CardTitle>
@@ -304,72 +438,59 @@ const ValidatorDashboard: React.FC = () => {
                 </Card>
               </div>
 
-              {/* Tabs */}
-              <Tabs defaultValue="performance" className="space-y-4">
-                <TabsList>
-                  <TabsTrigger value="performance">Performance</TabsTrigger>
-                  <TabsTrigger value="map">Location Map</TabsTrigger>
-                  <TabsTrigger value="system">System Stats</TabsTrigger>
-                </TabsList>
+              {/* Performance Section */}
+              <Card className="md:col-span-2">
+                <CardHeader>
+                  <CardTitle>Ping Response Time</CardTitle>
+                  <CardDescription>
+                    Average response time over the last 24 hours
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="pl-2">
+                  <PingChart isStarted={isStarted} validatorId={validatorId} />
+                </CardContent>
+              </Card>
 
-                <TabsContent value="performance" className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <Card className="md:col-span-2">
-                      <CardHeader>
-                        <CardTitle>Ping Response Time</CardTitle>
-                        <CardDescription>
-                          Average response time over the last 24 hours
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="pl-2">
-                        <PingChart isStarted={isStarted} />
-                      </CardContent>
-                    </Card>
+              {/* Recent Pings Section */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Recent Pings</CardTitle>
+                  <CardDescription>
+                    Latest website pings from your validator
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <RecentPings validatorId={validatorId} logs={recentLogs} />
+                </CardContent>
+              </Card>
 
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Recent Pings</CardTitle>
-                        <CardDescription>
-                          Latest website pings from your validator
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <RecentPings isStarted={isStarted} />
-                      </CardContent>
-                    </Card>
+              {/* Performance Score Section */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Performance Score</CardTitle>
+                  <CardDescription>
+                    Based on response time, uptime, and consistency
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ValidatorStats score={dashboardData.performanceScore} />
+                </CardContent>
+              </Card>
 
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Performance Score</CardTitle>
-                        <CardDescription>
-                          Based on response time, uptime, and consistency
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <ValidatorStats score={dashboardData.performanceScore} />
-                      </CardContent>
-                    </Card>
-                  </div>
-                </TabsContent>
+              {/* Validator Location Section */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Validator Location</CardTitle>
+                  <CardDescription>
+                    Your validator's geographic position in the network
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ValidatorMap />
+                </CardContent>
+              </Card>
 
-                <TabsContent value="map">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Validator Location</CardTitle>
-                      <CardDescription>
-                        Your validator's geographic position in the network
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <ValidatorMap />
-                    </CardContent>
-                  </Card>
-                </TabsContent>
-
-                <TabsContent value="system" className="space-y-4">
-                  {/* …system stats panels unchanged… */}
-                </TabsContent>
-              </Tabs>
+              {/* You can re-add "System Stats" cards here if needed, since tabs are removed */}
             </div>
           }
         />

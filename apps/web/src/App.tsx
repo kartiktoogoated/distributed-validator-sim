@@ -2,15 +2,27 @@ import { ThemeProvider } from '@/components/theme-provider';
 import { Toaster } from '@/components/ui/toaster';
 import { AuthProvider } from '@/context/auth-context';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
-import LandingPage from '@/pages/landing';
-import AboutPage from '@/pages/about';
-import DocsPage from '@/pages/docs';
-import CryptoPage from '@/pages/crypto';
-import ClientDashboard from '@/pages/client-dashboard';
-import LoginPage from '@/pages/login';
-import SignupPage from '@/pages/signup';
-import PricingPage from './pages/pricing';
-import ValidatorDashboard from './pages/validator-dashboard';
+import { Suspense, lazy } from 'react';
+import { Loader2 } from 'lucide-react';
+import OauthSuccess from "@/pages/oauth-success";
+
+// Lazy load pages
+const LandingPage = lazy(() => import('@/pages/landing'));
+const AboutPage = lazy(() => import('@/pages/about'));
+const DocsPage = lazy(() => import('@/pages/docs'));
+const CryptoPage = lazy(() => import('@/pages/crypto'));
+const ClientDashboard = lazy(() => import('@/pages/client-dashboard'));
+const LoginPage = lazy(() => import('@/pages/login'));
+const SignupPage = lazy(() => import('@/pages/signup'));
+const PricingPage = lazy(() => import('./pages/pricing'));
+const ValidatorDashboard = lazy(() => import('./pages/validator-dashboard'));
+
+// Loading component
+const LoadingSpinner = () => (
+  <div className="h-screen w-screen flex items-center justify-center">
+    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+  </div>
+);
 
 function App() {
   return (
@@ -18,20 +30,52 @@ function App() {
       <ThemeProvider defaultTheme="light">
         <AuthProvider>
           <Routes>
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/about" element={<AboutPage />} />
-            <Route path="/docs" element={<DocsPage />} />
-            <Route path="/crypto" element={<CryptoPage />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/signup" element={<SignupPage />} />
-            <Route path="/pricing" element={<PricingPage />} />
-            <Route path="/validator-dashboard/*" element={<ValidatorDashboard />} />
-            <Route 
-              path="/client-dashboard/*" 
-              element={
+            <Route path="/" element={
+              <Suspense fallback={<LoadingSpinner />}>
+                <LandingPage />
+              </Suspense>
+            } />
+            <Route path="/about" element={
+              <Suspense fallback={<LoadingSpinner />}>
+                <AboutPage />
+              </Suspense>
+            } />
+            <Route path="/docs" element={
+              <Suspense fallback={<LoadingSpinner />}>
+                <DocsPage />
+              </Suspense>
+            } />
+            <Route path="/crypto" element={
+              <Suspense fallback={<LoadingSpinner />}>
+                <CryptoPage />
+              </Suspense>
+            } />
+            <Route path="/login" element={
+              <Suspense fallback={<LoadingSpinner />}>
+                <LoginPage />
+              </Suspense>
+            } />
+            <Route path="/signup" element={
+              <Suspense fallback={<LoadingSpinner />}>
+                <SignupPage />
+              </Suspense>
+            } />
+            <Route path="/pricing" element={
+              <Suspense fallback={<LoadingSpinner />}>
+                <PricingPage />
+              </Suspense>
+            } />
+            <Route path="/validator-dashboard/*" element={
+              <Suspense fallback={<LoadingSpinner />}>
+                <ValidatorDashboard />
+              </Suspense>
+            } />
+            <Route path="/client-dashboard/*" element={
+              <Suspense fallback={<LoadingSpinner />}>
                 <ClientDashboard />
-              } 
-            />
+              </Suspense>
+            } />
+            <Route path="/oauth-success" element={<OauthSuccess />} />
           </Routes>
           <Toaster />
         </AuthProvider>

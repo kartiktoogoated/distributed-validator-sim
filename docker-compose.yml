@@ -3,7 +3,6 @@ version: '3.8'
 services:
   prometheus:
     image: prom/prometheus
-    container_name: prometheus
     ports:
       - "9090:9090"
     volumes:
@@ -15,7 +14,6 @@ services:
 
   grafana:
     image: grafana/grafana
-    container_name: grafana
     ports:
       - "3003:3000"
     volumes:
@@ -24,102 +22,154 @@ services:
       - raftnet
 
   db:
-    image: postgres:15
-    container_name: db
+    image: postgres:14-alpine
+    container_name: postgres-db
     environment:
-      POSTGRES_USER: prisma
-      POSTGRES_PASSWORD: prisma
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: REDACTED_PASSWORD
       POSTGRES_DB: mydb
     ports:
-      - "5430:5432"
+      - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - db_data:/var/lib/postgresql/data
     networks:
       - raftnet
 
   zookeeper:
-    image: confluentinc/cp-zookeeper:7.5.0
-    container_name: zookeeper
+    image: confluentinc/cp-zookeeper:7.3.0
     environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
+      - ZOOKEEPER_CLIENT_PORT=2181
     ports:
       - "2181:2181"
     networks:
       - raftnet
 
   kafka:
-    image: confluentinc/cp-kafka:7.5.0
-    container_name: kafka
-    depends_on:
-      - zookeeper
-    environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    image: confluentinc/cp-kafka:7.3.0
     ports:
       - "9092:9092"
+    environment:
+      - KAFKA_BROKER_ID=1
+      - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+    depends_on:
+      - zookeeper
     networks:
       - raftnet
 
   aggregator:
     build:
       context: .
-      dockerfile: Dockerfile
-      target: runner
-    container_name: aggregator
-    depends_on:
-      - db
-      - kafka
-      - zookeeper
+      dockerfile: apps/server/src/services/aggregator/Dockerfile
     ports:
       - "3000:3000"
     env_file:
       - .env.aggregator
-    networks:
-      - raftnet
-    restart: always
-
-  validator_b:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: runner
-    container_name: validator_b
+    environment:
+      - IS_AGGREGATOR=true
     depends_on:
       - db
       - kafka
-      - zookeeper
+    networks:
+      - raftnet
+    command: >
+      sh -c "
+        echo '🕒 Waiting for DB...' &&
+        until nc -z db 5432; do sleep 1; done &&
+        echo '🕒 Waiting for Kafka...' &&
+        until nc -z kafka 9092; do sleep 1; done &&
+        echo '✅ All services ready, running migrations...' &&
+        cd /app/packages/db &&
+        npx prisma migrate deploy &&
+        echo '🚀 Starting Aggregator...' &&
+        node /app/apps/server/dist/src/services/aggregator/server.js
+      "
+
+  api-server:
+    build:
+      context: .
+      dockerfile: apps/server/src/services/api-server/Dockerfile
     ports:
-      - "3001:3001"
+      - "3004:3004"
+    env_file:
+      - .env.api-server
+    environment:
+      - PORT=3004
+    depends_on:
+      - db
+      - kafka
+    networks:
+      - raftnet
+    command: >
+      sh -c "
+        echo '🕒 Waiting for DB...' &&
+        until nc -z db 5432; do sleep 1; done &&
+        echo '✅ DB ready, running migrations...' &&
+        cd /app/packages/db &&
+        npx prisma migrate deploy &&
+        echo '🚀 Starting API Server...' &&
+        node /app/apps/server/dist/src/services/api-server/api-server.js
+      "
+
+  validator-1:
+    build:
+      context: .
+      dockerfile: apps/server/src/services/validator/Dockerfile
+    ports:
+      - "3001:3000"
     env_file:
       - .env.nodeB
-    networks:
-      - raftnet
-    restart: always
-
-  validator_c:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: runner
-    container_name: validator_c
     depends_on:
       - db
-      - kafka
-      - zookeeper
-    ports:
-      - "3002:3002"
-    env_file:
-      - .env.nodeC
+      - aggregator
     networks:
       - raftnet
-    restart: always
+    cap_add:
+      - NET_RAW
+    command: >
+      sh -c "
+        echo '🕒 Waiting for DB...' &&
+        until nc -z db 5432; do sleep 1; done &&
+        echo '🕒 Waiting for Aggregator...' &&
+        until curl -s http://aggregator:3000/health > /dev/null; do sleep 1; done &&
+        echo '✅ All services ready, running migrations...' &&
+        cd /app/packages/db &&
+        npx prisma migrate deploy &&
+        echo '🚀 Starting Validator 1...' &&
+        node /app/apps/server/dist/src/services/validator/server.js
+      "
+
+  validator-2:
+    build:
+      context: .
+      dockerfile: apps/server/src/services/validator/Dockerfile
+    ports:
+      - "3002:3000"
+    env_file:
+      - .env.nodeC
+    depends_on:
+      - db
+      - aggregator
+    networks:
+      - raftnet
+    cap_add:
+      - NET_RAW
+    command: >
+      sh -c "
+        echo '🕒 Waiting for DB...' &&
+        until nc -z db 5432; do sleep 1; done &&
+        echo '🕒 Waiting for Aggregator...' &&
+        until curl -s http://aggregator:3000/health > /dev/null; do sleep 1; done &&
+        echo '✅ All services ready, running migrations...' &&
+        cd /app/packages/db &&
+        npx prisma migrate deploy &&
+        echo '🚀 Starting Validator 2...' &&
+        node /app/apps/server/dist/src/services/validator/server.js
+      "
 
 volumes:
-  postgres_data:
+  db_data:
   grafana-storage:
 
 networks:

@@ -1,3 +1,113 @@
+# Server (Backend)
+
+Node.js backend for the Distributed Validator Platform. Runs validators, aggregator, API server, and handles consensus, logs, alerts, and more.
+
+## Features
+- Distributed validators (ICMP/HTTP pings)
+- Gossip and Raft consensus
+- Aggregator for quorum and alerting
+- REST and WebSocket APIs
+- Kafka and email integration
+- PostgreSQL via Prisma ORM
+
+## Tokenomics System
+
+The system includes a tokenomics reward mechanism using Solana:
+
+- Validators receive SOL rewards for accurate votes
+- Rewards are distributed hourly based on validator performance
+- Performance is measured by the ratio of valid votes to total votes
+- Minimum threshold of valid votes required for rewards
+- Rewards are proportional to validator accuracy
+
+### Required Environment Variables
+
+Add these variables to your `.env` file:
+
+```env
+# Solana Configuration
+SOLANA_RPC_ENDPOINT=https://api.devnet.solana.com
+REWARD_WALLET_PRIVATE_KEY=your_base64_encoded_private_key
+TOKEN_MINT_ADDRESS=your_token_mint_address
+
+# Validator Public Keys (for rewards)
+VALIDATOR_1_PUBKEY=validator1_public_key
+VALIDATOR_2_PUBKEY=validator2_public_key
+VALIDATOR_3_PUBKEY=validator3_public_key
+```
+
+### Setting Up Solana Rewards
+
+1. Create a Solana wallet for rewards:
+   ```bash
+   solana-keygen new -o reward-wallet.json
+   ```
+
+2. Get the public key:
+   ```bash
+   solana-keygen pubkey reward-wallet.json
+   ```
+
+3. Fund the wallet with SOL (on devnet):
+   ```bash
+   solana airdrop 1 <PUBKEY> --url devnet
+   ```
+
+4. Convert private key to base64:
+   ```bash
+   base64 reward-wallet.json
+   ```
+
+5. Add the base64-encoded private key to your `.env` file as `REWARD_WALLET_PRIVATE_KEY`
+
+6. Add each validator's Solana public key to the environment variables
+
+## Setup
+1. Install dependencies:
+   ```bash
+   pnpm install
+   ```
+2. Copy `.env.example` to `.env` in each service (see below)
+3. Run with Docker Compose:
+   ```bash
+   docker-compose up --build
+   ```
+
+## Services & Env Files
+- **Aggregator:** `apps/server/src/services/aggregator/.env.example`
+- **Validator:**  `apps/server/src/services/validator/.env.example`
+- **API Server:** `apps/server/src/services/api-server/.env.example`
+
+## Key Environment Variables
+- `PORT` — Service port
+- `IS_AGGREGATOR` — Set to `true` for aggregator
+- `VALIDATOR_ID` — Unique for each validator
+- `PEERS` — Comma-separated peer addresses
+- `KAFKA_BROKER_LIST` — Kafka brokers
+- `DATABASE_URL` — PostgreSQL connection
+- `SMTP_*` — Email alert config
+- See each `.env.example` for full details
+
+## Running Services
+- **Aggregator:**
+  ```bash
+  IS_AGGREGATOR=true node dist/src/services/aggregator/server.js
+  ```
+- **Validator:**
+  ```bash
+  IS_AGGREGATOR=false VALIDATOR_ID=1 node dist/src/services/validator/server.js
+  ```
+- **API Server:**
+  ```bash
+  node dist/src/services/api-server/api-server.js
+  ```
+
+## API Endpoints
+See the main project README or `/api/docs` for all endpoints.
+
+## License
+MIT © Kartik Tomar
+
 # DeepFry API Documentation
 
 ## Authentication Endpoints

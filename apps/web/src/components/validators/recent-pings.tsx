@@ -2,19 +2,22 @@
 import { useState, useEffect, useRef } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 
 interface LogEntry {
   id: number;
+  validatorId: number;
   site: string;
   status: 'UP' | 'DOWN';
-  latency: number;
+  latency: number | null;
   timestamp: string;
+  location: string;
 }
 
 interface RecentPingsProps {
-  isStarted: boolean;
+  validatorId: number | null;
+  logs: LogEntry[];
+  onNewPing?: (ping: LogEntry) => void;
 }
 
 const formatTime = (timestamp: string) => {
@@ -25,60 +28,48 @@ const formatTime = (timestamp: string) => {
   return `${Math.floor(seconds / 3600)}h ago`;
 };
 
-const RecentPings: React.FC<RecentPingsProps> = ({ isStarted }) => {
+const RecentPings: React.FC<RecentPingsProps> = ({ validatorId, logs, onNewPing }) => {
   const [pings, setPings] = useState<LogEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const lastPingIdsRef = useRef<Set<string>>(new Set());
 
-  const load = async () => {
-    try {
-      const res = await fetch('/api/logs?validatorId=0');
-      if (!res.ok) return;
-      const json = await res.json();
-      if (json.success && Array.isArray(json.logs)) {
-        setPings(json.logs.slice(0, 15));
-        setLoading(false);
-      }
-    } catch (e) {
-      console.error('Failed to load recent pings', e);
-    }
-  };
-
-  // 1) initial load on mount
   useEffect(() => {
-    load();
-  }, []);
-
-  // 2) start/stop polling when isStarted changes
-  useEffect(() => {
-    if (isStarted) {
-      intervalRef.current = setInterval(load, 10_000);
-    } else if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
+    if (!validatorId) {
+      setPings([]);
+      return;
     }
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
+
+    // Deduplicate logs by site, timestamp, and validatorId
+    const seen = new Set<string>();
+    const uniqueLogs = logs.filter(log => {
+      if (log.validatorId === 0) return false; // Skip aggregator logs
+      const key = `${log.site}-${log.timestamp}-${log.validatorId}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    // Sort by timestamp and take the most recent 15
+    const sortedLogs = uniqueLogs
+      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .slice(0, 15);
+
+    setPings(sortedLogs);
+
+    // Notify parent if a new ping is detected
+    const newPingIds = new Set(sortedLogs.map(p => `${p.site}-${p.timestamp}-${p.validatorId}`));
+    for (const log of sortedLogs) {
+      const key = `${log.site}-${log.timestamp}-${log.validatorId}`;
+      if (!lastPingIdsRef.current.has(key) && onNewPing) {
+        onNewPing(log);
       }
-    };
-  }, [isStarted]);
+    }
+    lastPingIdsRef.current = newPingIds;
+  }, [validatorId, logs, onNewPing]);
 
   return (
     <ScrollArea className="h-[240px]">
       <div className="space-y-3">
-        {loading &&
-          Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="flex items-center justify-between p-2">
-              <div className="space-y-2">
-                <Skeleton className="h-4 w-[120px]" />
-                <Skeleton className="h-3 w-[80px]" />
-              </div>
-              <Skeleton className="h-6 w-[60px]" />
-            </div>
-          ))}
-
-        {!loading &&
+        {!validatorId ? null : (
           pings.map((ping) => (
             <div
               key={ping.id}
@@ -93,10 +84,11 @@ const RecentPings: React.FC<RecentPingsProps> = ({ isStarted }) => {
             >
               <div>
                 <div className="font-medium">{ping.site}</div>
-                <div className="text-sm text-muted-foreground flex items-center">
+                <div className="text-sm text-muted-foreground flex items-center gap-2">
                   {ping.status === 'UP' ? (
                     <>
-                      <span className="mr-2">{ping.latency}ms</span>
+                      <span>{ping.latency}ms</span>
+                      <span>•</span>
                       <span>{formatTime(ping.timestamp)}</span>
                     </>
                   ) : (
@@ -110,7 +102,8 @@ const RecentPings: React.FC<RecentPingsProps> = ({ isStarted }) => {
                 {ping.status === 'UP' ? 'OK' : 'Error'}
               </Badge>
             </div>
-          ))}
+          ))
+        )}
       </div>
     </ScrollArea>
   );

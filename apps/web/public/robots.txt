@@ -1,0 +1,8 @@
+User-agent: *
+Allow: /
+
+# Sitemap location
+Sitemap: https://deepfry.tech/sitemap.xml
+
+# Crawl-delay
+Crawl-delay: 10 

@@ -1,157 +1,80 @@
-# Distributed Validator Uptime Monitoring
+# Distributed Validator Platform
 
-A highly resilient, distributed uptime monitoring system using decentralized validators, gossip-based voting, Raft consensus, and real-time notifications.
+A resilient, decentralized uptime monitoring and consensus system using distributed validators, gossip, Raft, Kafka, and real-time alerting.
 
 ## Features
+- Distributed validators ping websites from multiple regions
+- Gossip protocol for vote sharing and quorum
+- Aggregator node for consensus and alerting
+- Raft-based log replication for durability
+- Real-time WebSocket and REST APIs
+- Kafka integration for event streaming
+- Email alerts for downtime
+- PostgreSQL persistence via Prisma ORM
+- Modern React dashboard (Vite, Tailwind)
 
-- **Distributed Validators**: Multiple validator instances ping target websites from different regions.
-- **DNS Caching**: In-process DNS cache to speed up host resolution.
-- **Gossip Protocol**: Validators share ping results with peers for quorum voting.
-- **Hub Consensus**: Centralized vote-aggregator that determines UP/DOWN based on quorum threshold.
-- **Raft Consensus**: Strongly-consistent log replication and leader election for durable, fault-tolerant storage of consensus decisions.
-- **WebSocket API**: Real-time broadcast of ping results and consensus to frontend clients.
-- **REST API**: CRUD operations for users and monitored websites, status checks, history, and summaries.
-- **Kafka Integration**: Publish health checks and alerts to Kafka topics, consumed by alert service.
-- **Alert Service**: Sends email and WebSocket notifications for region-specific DOWN events.
-- **Prisma ORM**: PostgreSQL-backed persistence for validators, logs, and metadata.
-
-## Architecture Overview
-
+## Architecture
 ```
-+-------------------+        +----------------+        +--------------+
-|   Validator Node  | <----> |   Gossip Hub   | <----> | Other Nodes  |
-|  (ping + DNS)    |        | (vote tally)   |        |              |
-+---------+---------+        +--------+-------+        +------+-------+
-          |                            |                      |
-          v                            v                      v
-+------------------------------------+                    [Kafka]
-|      Raft Cluster (Leader)         |                       |
-|  - Leader Election                 |                       v
-|  - AppendEntries / Log Replication |              +------------------+
-+------------------------------------+              | Alert Service    |
-          |                                         | - Email Alerts   |
-          v                                         | - WS Broadcast   |
-+----------------------+                            +------------------+
-| WebSocket Server     |
-| REST API Endpoints   |
-+----------+-----------+
-           |
-           v
-       Frontend
-
+[Validator Nodes] <-> [Gossip] <-> [Aggregator (Raft Leader)] <-> [Kafka/DB/Alerts]
+      |                                                        |
+      +-------------------[WebSocket/API]----------------------+
 ```
 
-## Installation
+## Monorepo Structure
+- `apps/server`   — Node.js backend (validators, aggregator, API)
+- `apps/web`      — React client dashboard
+- `apps/docs`     — Documentation site
+- `monitoring/`   — Prometheus/Grafana configs
+- `packages/`     — Shared code, configs, and types
 
-1. Clone the repo:
+## Quick Start
+1. **Clone & Install**
    ```bash
-   git clone https://github.com/your-org/distributed-validator.git
+   git clone ...
    cd distributed-validator
-   ```
-2. Install dependencies (uses pnpm):
-   ```bash
    pnpm install
    ```
-3. Build & run:
+2. **Copy and configure env files**
+   - See `.env.example` in each app (server, web, etc.)
+   - Example for aggregator:
+     ```ini
+     IS_AGGREGATOR=true
+     PORT=3000
+     VALIDATOR_IDS=1,2
+     KAFKA_BROKER_LIST=kafka:9092
+     ...
+     ```
+3. **Run with Docker Compose**
    ```bash
-   pnpm build
-   pnpm start
+   docker-compose up --build
    ```
+4. **Access the dashboard**
+   - http://localhost:5173/client-dashboard
 
 ## Environment Variables
+- Each service has its own `.env.example` (see `apps/server`, `apps/web`)
+- Common variables:
+  - `PORT` — Service port
+  - `DATABASE_URL` — PostgreSQL connection string
+  - `KAFKA_BROKER_LIST` — Kafka brokers
+  - `IS_AGGREGATOR` — Set to `true` for aggregator node
+  - `VALIDATOR_ID` — Unique ID for each validator
+  - `PEERS` — Comma-separated peer addresses
+  - `LOCATION` — Validator location label
+  - `PING_INTERVAL_MS` — Ping interval in ms
+  - `SMTP_*` — Email alert config
+  - See each `.env.example` for full details
 
-Copy `.env.example` to `.env` and fill in:
-
-```ini
-# Server
-PORT=3000
-DEFAULT_TARGET_URL=https://example.com
-
-# Validators
-VALIDATOR_ID=0
-PEERS=localhost:3000,localhost:3001
-LOCATION=us-east-1
-PING_INTERVAL_MS=60000
-GOSSIP_ROUNDS=1
-
-# Kafka
-KAFKA_BROKER=broker1:9092,broker2:9092
-VALIDATOR_STATUS_TOPIC=validator-status
-HEALTH_LOGS_TOPIC=health-logs
-HEALTH_ALERTS_TOPIC=health-alerts
-
-# SMTP (Alert Service)
-SMTP_HOST=smtp.example.com
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USER=alert@example.com
-SMTP_PASS=yourpassword
-MAIL_FROM="Alert Service <alert@example.com>"
-
-# Database
-DATABASE_URL=postgresql://user:pass@localhost:5432/validator_db
-```
-
-## API Endpoints
-
-### Authentication
-
-- `POST /api/auth/signup`  – Create user
-- `POST /api/auth/login`   – Login & receive token
-
-### Websites
-
-- `POST /api/websites`     – Add new site (authenticated)
-- `GET /api/websites`      – List user sites
-- `PUT /api/websites/:id`  – Update site URL
-- `DELETE /api/websites/:id` – Remove site
-- `PUT /api/websites/:id/pause`   – Pause/resume monitoring
-- `GET /api/websites/:id/history` – Fetch ping history
-- `GET /api/websites/:id/summary` – Uptime summary
-
-### Simulation & Status
-
-- `POST /api/simulate/gossip` – Receive gossip payloads
-- `GET /api/simulate?url=`    – Start/poll simulation loop
-- `GET /api/status?url=`      – Single ping status check
-
-### Raft
-
-- `POST /api/raft/request-vote`   – Raft RequestVote RPC
-- `POST /api/raft/append-entries` – Raft AppendEntries RPC
-
-### Logs & Alerts
-
-- `GET /api/logs`            – Stream or query logs
-- WebSocket: connect to `ws://localhost:3000` for real-time events
-
-## Frontend Integration
-
-Listen on WebSocket for messages:
-
-```js
-ws.onmessage = evt => {
-  const msg = JSON.parse(evt.data);
-  switch(msg.type) {
-    case 'REGION_DOWN':
-      // show region down alert msg.data
-      break;
-    case 'raft-commit':
-      // update committed commands
-      break;
-    default:
-      // consensus update: msg.url, msg.consensus, msg.timeStamp
-  }
-};
-```
+## API Overview
+- **REST:** `/api/*` for CRUD, logs, status, simulation
+- **WebSocket:** `/api/ws` for live consensus updates
+- **Kafka:** Internal event streaming
 
 ## Contributing
-
-1. Fork and create feature branch
-2. Write tests and adhere to code style
-3. Submit a PR with clear description
+- Fork, branch, and PR with clear description
+- Add/modify `.env.example` for any new config
+- See `CONTRIBUTING.md` for style and test guidelines
 
 ## License
-
 MIT © Kartik Tomar
 

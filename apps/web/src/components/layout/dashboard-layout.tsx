@@ -11,19 +11,19 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/context/auth-context";
 import {
   Activity,
   LayoutDashboard,
   Settings,
   LogOut,
-  ChevronDown,
   Menu,
   Bell,
-  Home,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -35,6 +35,8 @@ export default function DashboardLayout({
   userType,
 }: DashboardLayoutProps) {
   const [isMobile, setIsMobile] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -49,6 +51,11 @@ export default function DashboardLayout({
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
   }, []);
+
+  // Close sidebar on mobile route change
+  useEffect(() => {
+    if (!isMobile) setSidebarOpen(false);
+  }, [isMobile]);
 
   // open WS & listen for first‐ping and high‐latency
   useEffect(() => {
@@ -121,77 +128,125 @@ export default function DashboardLayout({
 
   // sidebar JSX
   const renderSidebar = () => (
-    <div className="h-full w-64 flex flex-col bg-card border-r">
-      <div className="p-6">
-        <Link to="/" className="flex items-center gap-2">
-          <Activity className="h-6 w-6 text-primary" />
-          <span className="text-xl font-bold text-foreground">DeepFry</span>
-        </Link>
-      </div>
-      <nav className="flex-1 px-3 py-2 space-y-1">
-        {menuItems.map((item) => (
-          <Link
-            key={item.name}
-            to={item.href}
-            className={cn(
-              "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors",
-              window.location.pathname === item.href ||
-                window.location.pathname + "/" === item.href
-                ? "bg-accent text-accent-foreground"
-                : "hover:bg-accent/50 text-foreground hover:text-foreground"
-            )}
-          >
-            {item.icon}
-            {item.name}
-          </Link>
-        ))}
-      </nav>
-      <div className="mt-6 px-3">
-        <div className="border rounded-md p-4 text-center">
-          <div className="text-sm font-medium text-foreground mb-2">
-            {userType === "validator" ? "Validator Status" : "Website Status"}
-          </div>
-          <div className="flex items-center justify-center gap-2 mb-3">
-            <div className="h-2.5 w-2.5 rounded-full bg-green-500" />
-            <span className="text-sm text-foreground">All systems online</span>
-          </div>
-          <Button variant="outline" size="sm" className="w-full" asChild>
-            <Link
-              to={
-                userType === "validator"
-                  ? "/validator-dashboard"
-                  : "/client-dashboard"
-              }
+    <TooltipProvider>
+      <div
+        className={
+          isMobile
+            ? `fixed top-0 left-0 h-full w-64 bg-card border-r z-40 transform transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`
+            : `h-full flex flex-col bg-card border-r transition-all duration-300 ${sidebarCollapsed ? 'w-16' : 'w-64'} shadow-lg`
+        }
+        style={isMobile ? { boxShadow: sidebarOpen ? '0 0 0 9999px rgba(0,0,0,0.3)' : 'none' } : {}}
+        onClick={isMobile ? () => setSidebarOpen(false) : undefined}
+      >
+        {/* Header */}
+        <div className={`flex items-center ${sidebarCollapsed ? 'justify-center py-4' : 'justify-between p-6'}`}>
+          <Tooltip delayDuration={0}>
+            <TooltipTrigger asChild>
+              <Link to="/" className="flex items-center gap-2">
+                <Activity className="h-6 w-6 text-primary" />
+                {!sidebarCollapsed && (
+                  <span className="text-xl font-bold text-foreground">DeepFry</span>
+                )}
+              </Link>
+            </TooltipTrigger>
+            {sidebarCollapsed && <TooltipContent side="right">DeepFry</TooltipContent>}
+          </Tooltip>
+          {/* Desktop collapse/expand toggle */}
+          {!isMobile && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className={`ml-2 border border-border rounded-full p-1 ${sidebarCollapsed ? 'bg-muted' : ''}`}
+              onClick={e => { e.stopPropagation(); setSidebarCollapsed((v) => !v); }}
+              tabIndex={0}
+              aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             >
-              View Details
-            </Link>
+              {sidebarCollapsed ? <ChevronRight className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
+            </Button>
+          )}
+        </div>
+        {/* Nav */}
+        <nav className={`flex-1 ${sidebarCollapsed ? 'flex flex-col items-center justify-center gap-2' : 'px-3 py-2 space-y-1'}`}>
+          {menuItems.map((item) => (
+            <Tooltip key={item.name} delayDuration={0}>
+              <TooltipTrigger asChild>
+                <Link
+                  to={item.href}
+                  className={cn(
+                    `flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'} px-3 py-2 rounded-md text-sm transition-colors`,
+                    window.location.pathname === item.href ||
+                      window.location.pathname + "/" === item.href
+                      ? "bg-accent text-accent-foreground"
+                      : "hover:bg-accent/50 text-foreground hover:text-foreground"
+                  )}
+                  onClick={isMobile ? () => setSidebarOpen(false) : undefined}
+                >
+                  {item.icon}
+                  {!sidebarCollapsed && item.name}
+                </Link>
+              </TooltipTrigger>
+              {sidebarCollapsed && <TooltipContent side="right">{item.name}</TooltipContent>}
+            </Tooltip>
+          ))}
+        </nav>
+        {/* Status & Details */}
+        {!sidebarCollapsed && (
+          <div className="mt-6 px-3">
+            <div className="border rounded-md p-4 text-center">
+              <div className="text-sm font-medium text-foreground mb-2">
+                {userType === "validator" ? "Validator Status" : "Website Status"}
+              </div>
+              <div className="flex items-center justify-center gap-2 mb-3">
+                <div className="h-2.5 w-2.5 rounded-full bg-green-500" />
+                <span className="text-sm text-foreground">All systems online</span>
+              </div>
+              <Button variant="outline" size="sm" className="w-full" asChild>
+                <Link
+                  to={
+                    userType === "validator"
+                      ? "/validator-dashboard"
+                      : "/client-dashboard"
+                  }
+                >
+                  View Details
+                </Link>
+              </Button>
+            </div>
+          </div>
+        )}
+        {/* Avatar & user info at bottom */}
+        <div className={`mt-auto border-t flex items-center ${sidebarCollapsed ? 'justify-center p-4' : 'gap-4 p-4'}`}>
+          <Tooltip delayDuration={0}>
+            <TooltipTrigger asChild>
+              <Avatar>
+                <img
+                  src="/user2.avif"
+                  alt="User avatar"
+                  className="rounded-full object-cover w-full h-full"
+                />
+                <AvatarFallback>
+                  {user?.email.charAt(0).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+            </TooltipTrigger>
+            {sidebarCollapsed && <TooltipContent side="right">{user?.email}</TooltipContent>}
+          </Tooltip>
+          {!sidebarCollapsed && (
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-foreground truncate">
+                {user?.email}
+              </p>
+              <p className="text-xs text-secondary-foreground capitalize">
+                {userType}
+              </p>
+            </div>
+          )}
+          <Button size="icon" variant="ghost" onClick={handleLogout}>
+            <LogOut className="h-4 w-4 text-foreground" />
           </Button>
         </div>
       </div>
-      <div className="mt-auto p-4 border-t flex items-center gap-4">
-        <Avatar>
-          <img
-            src="/user2.avif"
-            alt="User avatar"
-            className="rounded-full object-cover w-full h-full"
-          />
-          <AvatarFallback>
-            {user?.email.charAt(0).toUpperCase()}
-          </AvatarFallback>
-        </Avatar>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-foreground truncate">
-            {user?.email}
-          </p>
-          <p className="text-xs text-secondary-foreground capitalize">
-            {userType}
-          </p>
-        </div>
-        <Button size="icon" variant="ghost" onClick={handleLogout}>
-          <LogOut className="h-4 w-4 text-foreground" />
-        </Button>
-      </div>
-    </div>
+    </TooltipProvider>
   );
 
   // notifications dropdown
@@ -221,135 +276,87 @@ export default function DashboardLayout({
     </DropdownMenu>
   );
 
-  return (
-    <div className="min-h-screen flex">
-      {/* Mobile Header */}
-      {isMobile && (
-        <header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur">
-          <div className="flex h-14 items-center px-6">
-            <Sheet>
-              <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" className="mr-2">
-                  <Menu className="h-5 w-5 text-foreground" />
-                  <span className="sr-only">Toggle Menu</span>
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="left" className="pr-0 sm:max-w-xs">
-                {renderSidebar()}
-              </SheetContent>
-            </Sheet>
-            <Link to="/" className="flex items-center gap-2 mr-4">
-              <Activity className="h-6 w-6 text-primary" />
-              <span className="font-bold text-foreground">DeepFry</span>
-            </Link>
-            <div className="flex-1" />
-            <NotificationsMenu />
-            <ThemeToggle />
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="ml-2">
-                  <Avatar>
-                    <img
-                      src="/user2.avif"
-                      alt="User avatar"
-                      className="rounded-full object-cover w-full h-full"
-                    />
-                    <AvatarFallback>
-                      {user?.email.charAt(0).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuLabel>My Account</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link
-                    to={
-                      userType === "validator"
-                        ? "/validator-dashboard/settings"
-                        : "/client-dashboard/settings"
-                    }
-                  >
-                    <Settings className="mr-2 h-4 w-4 text-foreground" />
-                    Settings
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleLogout}>
-                  <LogOut className="mr-2 h-4 w-4 text-foreground" />
-                  Log out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </header>
-      )}
-
-      <div className="flex flex-1">
-        {/* Desktop Sidebar */}
-        {!isMobile && <aside className="hidden md:block">{renderSidebar()}</aside>}
-
-        {/* Main Content */}
-        <div className="flex flex-1 flex-col">
-          {!isMobile && (
-            <header className="sticky top-0 z-30 bg-background border-b">
-              <div className="mx-auto flex h-16 items-center justify-between px-6 max-w-7xl">
-                <div className="flex items-center gap-2">
-                  <Link to="/">
-                    <Home className="h-5 w-5 text-foreground" />
-                  </Link>
-                  <NotificationsMenu />
-                  <ThemeToggle />
-                </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="flex items-center gap-2">
-                      <Avatar>
-                        <img
-                          src="/user2.avif"
-                          alt="User avatar"
-                          className="rounded-full object-cover w-full h-full"
-                        />
-                        <AvatarFallback>
-                          {user?.email.charAt(0).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="max-w-[150px] truncate text-foreground">
-                        {user?.email}
-                      </span>
-                      <ChevronDown className="h-4 w-4 text-foreground" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuLabel>My Account</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem asChild>
-                      <Link
-                        to={
-                          userType === "validator"
-                            ? "/validator-dashboard/settings"
-                            : "/client-dashboard/settings"
-                        }
-                      >
-                        <Settings className="mr-2 h-4 w-4 text-foreground" />
-                        Settings
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem onClick={handleLogout}>
-                      <LogOut className="mr-2 h-4 w-4 text-foreground" />
-                      Log out
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+  // HEADER with toggle button
+  const renderHeader = () => (
+    <header className="border-b px-4 py-3 flex items-center justify-between bg-background z-10 sticky top-0">
+      <div className="flex items-center">
+        {isMobile && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="mr-2"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Open sidebar"
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+        )}
+        {/* Dashboard title or logo for mobile */}
+        {isMobile && !sidebarOpen && (
+          <Link to="/" className="inline-flex items-center gap-2 text-xl font-bold text-foreground">
+            <Activity className="h-6 w-6 text-primary" />
+            DeepFry
+          </Link>
+        )}
+      </div>
+      <div className="flex items-center gap-2 flex-wrap justify-end">
+        {/* Notifications Dropdown */}
+        <NotificationsMenu />
+        <ThemeToggle />
+        {/* User Dropdown */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" className="relative h-9 w-9 rounded-full">
+              <Avatar>
+                <img
+                  src={user?.avatar || "/user2.avif"}
+                  alt="User avatar"
+                  className="rounded-full object-cover w-full h-full"
+                />
+                <AvatarFallback>
+                  {user?.email ? user.email.charAt(0).toUpperCase() : 'U'}
+                </AvatarFallback>
+              </Avatar>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent className="w-56" align="end" forceMount>
+            <DropdownMenuLabel className="font-normal">
+              <div className="flex flex-col space-y-1">
+                <p className="text-sm font-medium leading-none truncate">
+                  {user?.name || user?.email}
+                </p>
+                <p className="text-xs leading-none text-muted-foreground truncate">
+                  {user?.email}
+                </p>
               </div>
-            </header>
-          )}
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => navigate(`/client-dashboard/settings`)}>
+              <Settings className="mr-2 h-4 w-4" />
+              Settings
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={handleLogout}>
+              <LogOut className="mr-2 h-4 w-4" />
+              Log out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </header>
+  );
 
-          <main className="flex-1 overflow-auto bg-background">
-            <div className="mx-auto max-w-7xl px-6 py-6">{children}</div>
+  return (
+    <TooltipProvider>
+      <div className="flex h-screen">
+        {renderSidebar()}
+        <div className="flex-1 overflow-auto min-w-0">
+          {renderHeader()}
+          <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            {children}
           </main>
         </div>
       </div>
-    </div>
+    </TooltipProvider>
   );
 }

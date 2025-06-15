@@ -26,7 +26,15 @@ export const createRateLimiter = (options: {
 export const globalRateLimiter = createRateLimiter({
   windowMs: DEFAULT_WINDOW_MS,
   max: DEFAULT_MAX_REQUESTS,
-  skip: (req) => req.path.startsWith("/api/raft"), // Skip Raft endpoints
+  skip: (req) => {
+    // Skip rate limiting for dashboard and Raft endpoints
+    return (
+      req.path.startsWith("/api/raft") ||
+      req.path.startsWith("/api/simulate") ||
+      req.path.startsWith("/api/logs") ||
+      req.path.startsWith("/api/ws")
+    );
+  },
 });
 
 export const authRateLimiter = createRateLimiter({
@@ -39,4 +47,12 @@ export const apiRateLimiter = createRateLimiter({
   windowMs: DEFAULT_WINDOW_MS,
   max: 50, // Moderate limit for API endpoints
   message: "API rate limit exceeded, please try again later",
+  skip: (req) => {
+    // Skip rate limiting for dashboard endpoints
+    return (
+      req.path.startsWith("/api/simulate") ||
+      req.path.startsWith("/api/logs") ||
+      req.path.startsWith("/api/ws")
+    );
+  },
 }); 

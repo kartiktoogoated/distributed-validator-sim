@@ -23,41 +23,35 @@ export interface OtpRequest {
 }
 
 // Kafka client and producer setup
-const kafkaClient = new Kafka({
-  clientId: kafkaConfig.KAFKA_CLIENT_ID,
-  brokers: kafkaBrokerList,
-  logLevel: logLevel.INFO,
+const kafka = new Kafka({
+  clientId: process.env.IS_AGGREGATOR === 'true' ? 'aggregator' : 'validator',
+  brokers: (process.env.KAFKA_BOOTSTRAP_SERVERS || 'kafka:9092').split(','),
 });
 
-export const kafkaProducer = kafkaClient.producer();
+let producer = kafka.producer();
+let isConnected = false;
 
-export async function startKafkaProducer(): Promise<void> {
-  try {
-    await kafkaProducer.connect();
-    info(`✅ Kafka producer connected to: ${kafkaBrokerList.join(", ")}`);
-  } catch (err) {
-    logError(`❌ Failed to connect Kafka producer: ${err}`);
-    process.exit(1);
+async function connectProducerWithRetry(retries = 5, delay = 2000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      if (!isConnected) {
+        await producer.connect();
+        isConnected = true;
+      }
+      return;
+    } catch (err) {
+      if (i === retries - 1) throw err;
+      await new Promise(res => setTimeout(res, delay));
+    }
   }
 }
 
-// ——— Internal helper to send JSON to a topic —————————
-export async function sendToTopic<T>(topic: string, payload: T): Promise<void> {
-  try {
-    await kafkaProducer.send({
-      topic,
-      messages: [
-        {
-          key: String(
-            (payload as any).validatorId ?? (payload as any).userId
-          ),
-          value: JSON.stringify(payload),
-        },
-      ],
-    });
-  } catch (err) {
-    throw err;
-  }
+export async function sendToTopic(topic: string, message: any) {
+  await connectProducerWithRetry();
+  await producer.send({
+    topic,
+    messages: [{ value: JSON.stringify(message) }],
+  });
 }
 
 // ——— Publish a health check log, and optionally enqueue an alert ——

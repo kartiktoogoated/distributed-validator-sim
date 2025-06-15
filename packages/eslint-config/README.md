@@ -1,3 +1,11 @@
-# `@turbo/eslint-config`
+# @turbo/eslint-config
 
-Collection of internal eslint configurations.
+Internal ESLint configuration for the Distributed Validator Platform monorepo.
+
+## Usage
+Add to your `eslint.config.js`:
+
+```js
+import config from '@turbo/eslint-config';
+export default config;
+```

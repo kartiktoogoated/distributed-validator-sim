@@ -30,6 +30,7 @@ export function initRaftRouter(node: RaftNode): Router {
   router.post(
     "/request-vote",
     async (req: Request, res: Response<RequestVoteResult>): Promise<any> => {
+      console.log("📨 RequestVote received:", req.body);
       const rpc = req.body as RequestVoteRPC;
       const result = await node.handleRequestVote(rpc);
       return res.json(result);
@@ -40,6 +41,7 @@ export function initRaftRouter(node: RaftNode): Router {
   router.post(
     "/append-entries",
     async (req: Request, res: Response<AppendEntriesResult>): Promise<any> => {
+      console.log("📨 RequestVote received:", req.body);
       const rpc = req.body as AppendEntriesRPC;
       const result = await node.handleAppendEntries(rpc);
       return res.json(result);

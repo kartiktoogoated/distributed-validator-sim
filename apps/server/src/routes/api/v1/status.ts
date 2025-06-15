@@ -2,39 +2,34 @@ import express, { Request, Response } from "express";
 import { WebSocketServer } from "ws";
 import { Validator } from "../../../core/Validator";
 import { info, warn, error as logError } from "../../../../utils/logger";
+import prisma from "../../../prismaClient";
 
 export default function createStatusRouter(ws: WebSocketServer) {
   const router = express.Router();
 
   router.get("/", async (req: Request, res: Response): Promise<any> => {
+    info("Received /api/status request"); // Debug log
     try {
-      // figure out which URL to ping
-      const targetUrl =
-        (req.query.url as string) ||
-        process.env.DEFAULT_TARGET_URL ||
-        "http://google.com";
-      info(`Status check requested for ${targetUrl}`);
-
-      // run a single checkWebsite() locally
-      const validatorId = Number(process.env.VALIDATOR_ID);
-      if (isNaN(validatorId)) {
-        warn(`Invalid VALIDATOR_ID: ${process.env.VALIDATOR_ID}`);
-        return res
-          .status(500)
-          .json({ success: false, message: "VALIDATOR_ID must be defined" });
+      // Find all real validators (id != 0)
+      const validators = await prisma.validator.findMany({ where: { id: { not: 0 } } });
+      if (!validators || validators.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "No real validators found in database"
+        });
       }
-
-      const validator = new Validator(validatorId);
-      const vote = await validator.checkWebsite(targetUrl);
-
-      info(`Status ping for ${targetUrl}: ${vote.status} (${vote.weight})`);
-
-      // return exactly the fields you want
+      // Fetch the first non-paused website
+      const website = await prisma.website.findFirst({ where: { paused: false } });
+      const targetUrl = website ? website.url : null;
+      // Optionally, run a checkWebsite for status (uncomment if needed)
+      // const validatorInstance = new Validator(validator.id);
+      // const vote = await validatorInstance.checkWebsite(targetUrl);
       return res.json({
         success: true,
+        validators: validators.map(v => ({ id: v.id, location: v.location })),
         url: targetUrl,
-        status: vote.status,
-        weight: vote.weight,
+        // status: vote?.vote.status, // Uncomment if you want live status
+        // weight: vote?.vote.weight, // Uncomment if you want live weight
       });
     } catch (err: any) {
       logError(`Status error: ${err.stack || err}`);

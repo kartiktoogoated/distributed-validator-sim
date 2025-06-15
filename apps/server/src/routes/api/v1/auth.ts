@@ -1,4 +1,6 @@
 import { Router, Request, Response } from 'express';
+import passport from '../../../config/passport';
+import jwt from 'jsonwebtoken';
 import { signup, verifyPendingSignup, signin } from '../../../controllers/authController';
 import { authRateLimiter } from '../../../middlewares/rateLimiter';
 import { PublicKey } from '@solana/web3.js';
@@ -6,6 +8,7 @@ import nacl from 'tweetnacl';
 import prisma from '../../../prismaClient';
 
 const authRouter = Router();
+const JWT_SECRET = process.env.JWT_SECRET!;
 
 // Rate limiter for all auth routes
 authRouter.use(authRateLimiter);
@@ -15,6 +18,7 @@ authRouter.post('/signup', signup);
 authRouter.post('/verify-otp', verifyPendingSignup);
 authRouter.post('/signin', signin);
 
+// Solana wallet verification
 authRouter.post('/verify-wallet', async (req: Request, res: Response): Promise<void> => {
     try {
         const { wallet, message, signature } = req.body as {
@@ -60,5 +64,40 @@ authRouter.post('/verify-wallet', async (req: Request, res: Response): Promise<v
         return;
     }
 });
+
+// Google Oauth routes.
+
+authRouter.get(
+    '/google',
+    passport.authenticate('google', { scope: ['profile', 'email'] })
+);
+
+authRouter.get(
+    '/google/callback',
+    (req, res, next) => {
+        passport.authenticate(
+            'google',
+            { session: false },
+            async (err, user, info) => {
+                if (err || !user) {
+                    return res.status(401).json({ message: 'Google authentication failed' });
+                }
+                const { id, email, name, avatar } = user as any;
+                const token = jwt.sign(
+                    { userId: id, email, name, avatar },
+                    JWT_SECRET,
+                    { expiresIn: "1h" }
+                );
+                // Redirect to frontend with token and user info as query params
+                return res.redirect(
+                  `https://www.deepfry.tech/oauth-success?token=${token}` +
+                  (name ? `&name=${encodeURIComponent(name)}` : '') +
+                  (email ? `&email=${encodeURIComponent(email)}` : '') +
+                  (avatar ? `&avatar=${encodeURIComponent(avatar)}` : '')
+                );
+            }
+        )(req, res, next);
+    }
+);
 
 export default authRouter;

@@ -1,54 +1,42 @@
-# React + TypeScript + Vite
+# Web Dashboard (Client)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A modern React dashboard for the Distributed Validator Platform.
 
-Currently, two official plugins are available:
+## Features
+- Live consensus status via WebSocket
+- Uptime, latency, and validator analytics
+- Add/manage monitored websites
+- Responsive, dark-mode UI (Vite + Tailwind)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Setup
+1. Install dependencies:
+   ```bash
+   pnpm install
+   ```
+2. Copy `.env.example` to `.env` and configure:
+   ```ini
+   VITE_AGGREGATOR_WS_URL=ws://localhost:3000/api/ws
+   # ...other Vite/React envs
+   ```
+3. Start the dev server:
+   ```bash
+   pnpm dev
+   ```
+4. Open [http://localhost:5173/client-dashboard](http://localhost:5173/client-dashboard)
 
-## Expanding the ESLint configuration
+## Environment Variables
+- `VITE_AGGREGATOR_WS_URL` — WebSocket endpoint for live consensus
+- See `.env.example` for all options
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
+## Connecting to Consensus WebSocket
+The dashboard listens for live consensus updates:
 ```js
-export default tseslint.config({
-  extends: [
-    // Remove ...tseslint.configs.recommended and replace with this
-    ...tseslint.configs.recommendedTypeChecked,
-    // Alternatively, use this for stricter rules
-    ...tseslint.configs.strictTypeChecked,
-    // Optionally, add this for stylistic rules
-    ...tseslint.configs.stylisticTypeChecked,
-  ],
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+const ws = new WebSocket(import.meta.env.VITE_AGGREGATOR_WS_URL);
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  // { url, consensus, votes, timestamp }
+};
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default tseslint.config({
-  plugins: {
-    // Add the react-x and react-dom plugins
-    'react-x': reactX,
-    'react-dom': reactDom,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended typescript rules
-    ...reactX.configs['recommended-typescript'].rules,
-    ...reactDom.configs.recommended.rules,
-  },
-})
-```
+## License
+MIT © Kartik Tomar

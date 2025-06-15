@@ -29,6 +29,11 @@
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
     --radius: 0.5rem;
+
+    /* Custom black scrollbar colors */
+    --scrollbar-track-light: 0 0% 0% / 0.1;
+    --scrollbar-thumb-light: 0 0% 0% / 0.5;
+    --scrollbar-thumb-hover-light: 0 0% 0% / 0.7;
   }
 
   .dark {
@@ -56,6 +61,11 @@
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
+
+    /* Custom black scrollbar colors for dark mode */
+    --scrollbar-track-dark: 0 0% 0% / 0.1;
+    --scrollbar-thumb-dark: 0 0% 0% / 0.5;
+    --scrollbar-thumb-hover-dark: 0 0% 0% / 0.7;
   }
 }
 
@@ -65,6 +75,50 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+  
+  /* Custom Scrollbar Styles */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background-color: rgba(0, 0, 0, 0.2) !important; /* Slightly more visible track */
+    border-radius: 9999px !important;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.6) !important; /* Clearly visible black thumb */
+    border-radius: 9999px !important;
+    transition: background-color 0.2s !important;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(0, 0, 0, 0.8) !important; /* Darker black on hover */
+  }
+
+  /* For Firefox */
+  * {
+    scrollbar-width: thin !important;
+    scrollbar-color: rgba(0, 0, 0, 0.6) rgba(0, 0, 0, 0.2) !important; /* thumb track */
+  }
+
+  /* Dark mode specific scrollbar styles */
+  .dark ::-webkit-scrollbar-track {
+    background-color: rgba(255, 255, 255, 0.2) !important;
+  }
+
+  .dark ::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.6) !important;
+  }
+
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.8) !important;
+  }
+
+  .dark * {
+    scrollbar-color: rgba(255, 255, 255, 0.6) rgba(255, 255, 255, 0.2) !important;
   }
   
   /* OTP Input Styles */
@@ -78,27 +132,50 @@
   }
 }
 
-/* Crypto card flip animation */
+/* Crypto Card Flip Animation */
 .crypto-card {
   perspective: 1000px;
   transform-style: preserve-3d;
-  transition: transform 0.6s;
-}
-
-.crypto-card:hover {
-  transform: rotateY(180deg);
 }
 
 .crypto-card-front,
 .crypto-card-back {
-  backface-visibility: hidden;
   position: absolute;
-  top: 0;
-  left: 0;
   width: 100%;
   height: 100%;
+  backface-visibility: hidden;
+  transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-style: preserve-3d;
 }
 
 .crypto-card-back {
   transform: rotateY(180deg);
+}
+
+.crypto-card:hover .crypto-card-front {
+  transform: rotateY(180deg);
+}
+
+.crypto-card:hover .crypto-card-back {
+  transform: rotateY(0);
+}
+
+/* Hide month and year select inputs in Calendar caption */
+.rdp-caption_dropdowns {
+  display: none !important;
+}
+
+.rdp-caption_label select {
+  display: none !important;
+}
+
+/* Fallback for potential direct select elements if not wrapped by dropdowns class */
+.rdp-caption select {
+  display: none !important;
+}
+
+/* Force hide month and year select dropdowns in Shadcn Calendar */
+.rdp-caption_label select,
+.rdp-caption_dropdowns {
+  display: none !important;
 }

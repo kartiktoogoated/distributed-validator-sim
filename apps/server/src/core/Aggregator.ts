@@ -1,4 +1,3 @@
-import 'express-async-errors';
 import dotenv from 'dotenv'
 dotenv.config();
 
@@ -8,7 +7,7 @@ import { WebSocketServer } from 'ws';
 import { Kafka, logLevel } from 'kafkajs';
 import prisma from '../prismaClient';
 import nodemailer from 'nodemailer';
-import { info, warn, error as logError } from '../../utils/logger';
+import { info, error as logError } from '../../utils/logger';
 import { AppError } from '../../utils/errors';
 import { sendToTopic } from '../services/producer';
 import { mailConfig } from '../config/mailConfig';
@@ -107,9 +106,9 @@ interface VoteEntry {
   validatorId: number;
   status: 'UP' | 'DOWN';
   weight: number;
-  responseTime: number;
+  latencyMs: number;  
   location: string;
-  timestamp: number; // Added timestamp for TTL
+  timestamp: number;
 }
 
 const voteBuffer: Record<string, VoteEntry[]> = {};
@@ -160,7 +159,7 @@ async function startKafkaConsumer() {
           location: string; // Added location
         };
 
-        const key = `${payload.url}:${payload.timestamp}`;
+        const key = `${payload.url}__${payload.timestamp}`;
         
         // Skip if already processed
         if (processedConsensus.has(key)) {
@@ -168,17 +167,16 @@ async function startKafkaConsumer() {
         }
 
         voteBuffer[key] = voteBuffer[key] || [];
-        
-        // Add vote to buffer with timestamp
+
         voteBuffer[key].push({
           validatorId: payload.validatorId,
           status: payload.status,
           weight: 1,
-          responseTime: payload.latencyMs,
+          latencyMs: payload.latencyMs,
           location: payload.location,
           timestamp: Date.now()
-        });
-
+        });        
+        
         // Update metrics
         voteCounter.inc({ status: payload.status });
         voteLatencyHistogram.observe(payload.latencyMs / 1000); // Convert to seconds
@@ -201,52 +199,51 @@ startKafkaConsumer().catch((err) => {
 });
 
 // GOSSIP ROUTE
-app.post(
-  '/api/simulate/gossip',
-  async (req: Request, res: Response) => {
-    const {
-      site,
-      vote,
-      fromId,
-      responseTime,
-      timeStamp,
-      location,
-    } = req.body as {
-      site: string;
-      vote: { status: "UP" | "DOWN"; weight: number };
-      fromId: number;
-      responseTime: number;
-      timeStamp: string;
-      location: string;
-    };
+app.post('/api/simulate/gossip', async (req: Request, res: Response) => {
+  const {
+    site,
+    vote,
+    fromId,
+    latencyMs,
+    timestamp,
+    location,
+  } = req.body as {
+    site: string;
+    vote: { status: "UP" | "DOWN"; weight: number };
+    fromId: number;
+    latencyMs: number;
+    timestamp: string;
+    location: string;
+  };
 
-    if (
-      typeof site !== 'string' ||
-      typeof fromId !== 'number' ||
-      typeof responseTime !== 'number' ||
-      typeof timeStamp !== 'string' ||
-      typeof location !== 'string' ||
-      !vote ||
-      (vote.status !== 'UP' && vote.status !== 'DOWN')
-    ) {
-      throw new AppError('Malformed gossip payload', 400);
-    }
-
-    const key = `${site}: ${timeStamp}`;
-    voteBuffer[key] = voteBuffer[key] || [];
-    voteBuffer[key].push({
-      validatorId: fromId,
-      status: vote.status,
-      weight: vote.weight,
-      responseTime,
-      location,
-      timestamp: Date.now()
-    });
-
-    info(`Received gossip from ${fromId}@${location} → ${site}: ${vote.status}`);
-    res.sendStatus(204);
+  if (
+    typeof site !== 'string' ||
+    typeof fromId !== 'number' ||
+    typeof latencyMs !== 'number' ||
+    typeof timestamp !== 'string' ||
+    typeof location !== 'string' ||
+    !vote ||
+    (vote.status !== 'UP' && vote.status !== 'DOWN')
+  ) {
+    throw new AppError('Malformed gossip payload', 400);
   }
-);
+
+  const key = `${site}__${timestamp}`;
+  voteBuffer[key] = voteBuffer[key] || [];
+
+  voteBuffer[key].push({
+    validatorId: fromId,
+    status: vote.status,
+    weight: vote.weight,
+    latencyMs,
+    location,
+    timestamp: Date.now()
+  });
+
+  info(`Received gossip from ${fromId}@${location} → ${site}: ${vote.status}`);
+  res.sendStatus(204);
+});
+
 
 // ── PROCESS QUORUM ──────────────────────────────────────────────────────────
 async function processQuorum() {
@@ -256,7 +253,7 @@ async function processQuorum() {
     const entries = voteBuffer[key];
     if (entries.length < QUORUM) continue;
 
-    const [site, timeStamp] = key.split(':');
+    const [site, timestamp] = key.split('__');
     const upCount = entries.filter((e) => e.status === 'UP').length;
     const consensus: 'UP' | 'DOWN' =
       upCount >= entries.length - upCount ? 'UP' : 'DOWN';
@@ -266,7 +263,7 @@ async function processQuorum() {
       continue;
     }
 
-    info(`✔️ Consensus for ${site}@${timeStamp}: ${consensus} (${upCount}/${entries.length} UP)`);
+    info(`✔️ Consensus for ${site}@${timestamp}: ${consensus} (${upCount}/${entries.length} UP)`);
 
     // Update consensus metric
     consensusGauge.set({ url: site }, consensus === 'UP' ? 1 : 0);
@@ -277,23 +274,23 @@ async function processQuorum() {
         validatorId: e.validatorId,
         site,
         status: e.status,
-        latency: e.responseTime,
-        timestamp: new Date(timeStamp),
+        latency: e.latencyMs ?? 0,  
+        timestamp: new Date(timestamp),
       })),
     });
-
+    
     await prisma.validatorLog.create({
       data: {
         validatorId: 0,
         site,
         status: consensus,
         latency: 0,
-        timestamp: new Date(timeStamp),
+        timestamp: new Date(timestamp),
       },
     });
 
     // b) Broadcast WS
-    const payload = { url: site, consensus, votes: entries, timeStamp };
+    const payload = { url: site, consensus, votes: entries, timestamp };
     const msg = JSON.stringify(payload);
     wsServer.clients.forEach((c) => {
       if (c.readyState === c.OPEN) c.send(msg);
@@ -316,7 +313,7 @@ async function processQuorum() {
             from: process.env.ALERT_FROM!,
             to,
             subject: `ALERT: ${site} DOWN in ${e.location}`,
-            text: `Validator ${e.validatorId}@${e.location} reported DOWN at ${timeStamp}.`,
+            text: `Validator ${e.validatorId}@${e.location} reported DOWN at ${timestamp}.`,
           });
           info(`✉️ Alert sent to ${to}`);
         } catch (mailErr) {

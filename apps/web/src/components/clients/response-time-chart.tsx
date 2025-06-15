@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/exhaustive-deps */
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import {
   AreaChart,
   Area,
@@ -15,18 +15,19 @@ import { Card, CardContent } from '@/components/ui/card'
 interface HistoryLog {
   latency: number
   timestamp: string
+  status: 'UP' | 'DOWN'
+  url: string
 }
 
 interface MinuteBucket {
   formattedTime: string
-  latency: number
+  latency: number | null
+  isDown: boolean
 }
 
-// ─── module‐level caches ──────────────────────────────────────────────
 const historyCache: Record<number, HistoryLog[]> = {}
 const historyCacheTime: Record<number, number> = {}
 
-// Format ISO → "HH:mm" in local time
 function formatLabel(iso: string) {
   const d = new Date(iso)
   const hh = String(d.getHours()).padStart(2, '0')
@@ -40,8 +41,18 @@ const CustomTooltip = ({
   label,
 }: TooltipProps<number, string>) => {
   if (!active || !payload?.length) return null
-
-  const ms = payload[0].value as number
+  const entry = payload[0].payload as MinuteBucket
+  if (entry.isDown) {
+    return (
+      <Card>
+        <CardContent className="p-4 space-y-1">
+          <p className="text-sm font-medium">{label}</p>
+          <p className="text-sm font-semibold text-red-500">Down</p>
+        </CardContent>
+      </Card>
+    )
+  }
+  const ms = entry.latency!
   let quality = 'Poor'
   let color = 'text-red-500'
   if (ms < 60) {
@@ -54,14 +65,12 @@ const CustomTooltip = ({
     quality = 'Fair'
     color = 'text-yellow-500'
   }
-
   return (
     <Card>
       <CardContent className="p-4 space-y-1">
         <p className="text-sm font-medium">{label}</p>
         <p className="text-sm">
-          Response Time:{' '}
-          <span className="font-semibold">{ms} ms</span>
+          Response Time: <span className="font-semibold">{ms} ms</span>
         </p>
         <div className="flex items-center gap-1">
           <div className={color}>●</div>
@@ -80,9 +89,8 @@ interface Props {
 export default function ResponseTimeChart({ siteId, siteUrl }: Props) {
   const [data, setData] = useState<MinuteBucket[]>([])
   const wsRef = useRef<WebSocket | null>(null)
-  const token = localStorage.getItem('token')
+  const token = useMemo(() => localStorage.getItem('token')!, [])
 
-  // load last 60 entries (or reuse if within 1 minute)
   async function loadHistory() {
     const now = Date.now()
     if (
@@ -90,15 +98,12 @@ export default function ResponseTimeChart({ siteId, siteUrl }: Props) {
       now - (historyCacheTime[siteId] || 0) < 60_000
     ) {
       const slice = historyCache[siteId]
-        .sort(
-          (a, b) =>
-            new Date(a.timestamp).getTime() -
-            new Date(b.timestamp).getTime()
-        )
+        .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
         .slice(-60)
-        .map((log) => ({
+        .map(log => ({
           formattedTime: formatLabel(log.timestamp),
-          latency: log.latency,
+          latency: log.status === 'UP' ? log.latency : null,
+          isDown: log.status === 'DOWN',
         }))
       setData(slice)
       return
@@ -109,19 +114,17 @@ export default function ResponseTimeChart({ siteId, siteUrl }: Props) {
       { headers: { Authorization: `Bearer REDACTED_TOKEN` } }
     )
     if (!res.ok) return
-    const json = (await res.json()) as { logs: HistoryLog[] }
+    const json = await res.json() as { logs: HistoryLog[] }
     historyCache[siteId] = json.logs
     historyCacheTime[siteId] = now
 
     const slice = json.logs
-      .sort(
-        (a, b) =>
-          new Date(a.timestamp).getTime() -
-          new Date(b.timestamp).getTime()
-      )
-      .map((log) => ({
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+      .slice(-60)
+      .map(log => ({
         formattedTime: formatLabel(log.timestamp),
-        latency: log.latency,
+        latency: log.status === 'UP' ? log.latency : null,
+        isDown: log.status === 'DOWN',
       }))
     setData(slice)
   }
@@ -129,35 +132,30 @@ export default function ResponseTimeChart({ siteId, siteUrl }: Props) {
   useEffect(() => {
     loadHistory()
 
-    // ⚡️ LIVE WS: point at the exact mount-point (/api/ws)
     const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
-    const socket = new WebSocket(
-      `${proto}://${window.location.host}/api/ws`
-    )
+    const socket = new WebSocket(`${proto}://${window.location.host}/api/ws`)
     wsRef.current = socket
 
-    socket.onmessage = (ev) => {
+    socket.onmessage = ev => {
       try {
         const msg = JSON.parse(ev.data) as {
           url: string
           timeStamp: string
           responseTime: number
+          consensus: 'UP' | 'DOWN'
         }
-        // only update if it's for our site
-        if (
-          msg.url === siteUrl &&
-          typeof msg.responseTime === 'number'
-        ) {
-          setData((prev) => [
+        if (msg.url !== siteUrl) return
+
+          setData(prev => [
             ...prev.slice(-59),
             {
               formattedTime: formatLabel(msg.timeStamp),
-              latency: msg.responseTime,
+              latency: msg.consensus === 'UP' ? msg.responseTime : null,
+              isDown: msg.consensus === 'DOWN',
             },
           ])
-        }
       } catch {
-        // ignore non-ping messages
+        // ignore
       }
     }
 
@@ -175,49 +173,25 @@ export default function ResponseTimeChart({ siteId, siteUrl }: Props) {
           data={data}
           margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
         >
-          <CartesianGrid
-            strokeDasharray="3 3"
-            stroke="hsl(var(--border))"
-            opacity={0.3}
-          />
+          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
           <XAxis
             dataKey="formattedTime"
             tickLine={false}
             axisLine={{ stroke: 'hsl(var(--border))' }}
-            tick={{
-              fontSize: 12,
-              fill: 'hsl(var(--muted-foreground))',
-            }}
+            tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
           />
           <YAxis
-            domain={['dataMin - 10', 'dataMax + 10']}
+            domain={[0, 'dataMax + 10']}
             tickLine={false}
             axisLine={{ stroke: 'hsl(var(--border))' }}
-            tick={{
-              fontSize: 12,
-              fill: 'hsl(var(--muted-foreground))',
-            }}
-            tickFormatter={(v) => `${v} ms`}
+            tick={{ fontSize: 12, fill: 'hsl(var(--muted-foreground))' }}
+            tickFormatter={v => `${v} ms`}
           />
           <Tooltip content={<CustomTooltip />} />
           <defs>
-            <linearGradient
-              id="respGrad"
-              x1="0"
-              y1="0"
-              x2="0"
-              y2="1"
-            >
-              <stop
-                offset="5%"
-                stopColor="hsl(var(--primary))"
-                stopOpacity={0.8}
-              />
-              <stop
-                offset="95%"
-                stopColor="hsl(var(--primary))"
-                stopOpacity={0}
-              />
+            <linearGradient id="respGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.8} />
+              <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0} />
             </linearGradient>
           </defs>
           <Area
@@ -231,6 +205,7 @@ export default function ResponseTimeChart({ siteId, siteUrl }: Props) {
               stroke: 'hsl(var(--background))',
               strokeWidth: 2,
             }}
+            connectNulls={false}
           />
         </AreaChart>
       </ResponsiveContainer>

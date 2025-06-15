@@ -6,6 +6,9 @@ import { info } from "../../utils/logger";
 import { sendOtpEmail } from "../../utils/email";
 
 const JWT_SECRET = process.env.JWT_SECRET!;
+if (!JWT_SECRET) {
+  throw new Error("JWT_SECRET is not defined in environment variables");
+}
 
 /**
  * Utility function to create a 6-digit OTP.
@@ -19,85 +22,94 @@ function generateOTP(): string {
  */
 export async function signup(req: Request, res: Response): Promise<void> {
   try {
-    const { email, password, confirmPassword } = req.body;
+    const { email, password, confirmPassword } = req.body as {
+      email: string;
+      password: string;
+      confirmPassword: string;
+    };
+
     if (!email || !password || !confirmPassword) {
       res.status(400).json({ message: "All fields are required" });
       return;
     }
+
     if (password !== confirmPassword) {
       res.status(400).json({ message: "Passwords do not match" });
       return;
     }
 
-    // 1) Prevent duplicate permanent users
+    // Check for existing user
     const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) {
       res.status(400).json({ message: "User already exists" });
       return;
     }
-
-    // 2) Hash the password
+    // Hash the password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // 3) Generate OTP + expiration (10m)
+    // Generate OTP + expiration (10m)
     const otp = generateOTP();
     const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
 
-    // 4) Upsert pendingUser record
-    let pendingRecord = await prisma.pendingUser.findUnique({ where: { email } });
-    if (pendingRecord) {
-      pendingRecord = await prisma.pendingUser.update({
-        where: { email },
-        data: { password: hashedPassword, otp, otpExpires },
-      });
-      info(`Updated pending signup for ${email} with new OTP`);
-    } else {
-      pendingRecord = await prisma.pendingUser.create({
-        data: { email, password: hashedPassword, otp, otpExpires },
-      });
-      info(`Created pending signup for ${email} with OTP`);
-    }
+    // Upsert pendingUser record
+    const pendingUser = await prisma.pendingUser.upsert({
+      where: { email },
+      update: { password: hashedPassword, otp, otpExpires },
+      create: { email, password: hashedPassword, otp, otpExpires },
+    });
 
-    // 5) Enqueue OTP email via Kafka (no verificationLink yet)
-    await sendOtpEmail(pendingRecord.email, otp);
-    info(`Sent OTP email directly to ${email}`);
+    info(`Pending signup for ${email} with OTP`);
 
-    // 6) Response
+    // Send OTP email
+    await sendOtpEmail(pendingUser.email, otp);
+    info(`Sent OTP email to ${email}`);
+
     res.status(201).json({
       message: "Pending signup initiated. Please check your email for the OTP.",
       email,
     });
   } catch (err: any) {
-    res.status(500).json({ message: "Internal server error", error: err.message });
+    console.error(err);
+    res.status(500).json({ message: "Internal server error" });
   }
 }
 
 /**
  * OTP Verification endpoint.
  */
-export async function verifyPendingSignup(req: Request, res: Response): Promise<void> {
+export async function verifyPendingSignup(
+  req: Request,
+  res: Response
+): Promise<void> {
   try {
-    const { email, otp } = req.body;
+    const { email, otp } = req.body as { email: string; otp: string };
+
     if (!email || !otp) {
       res.status(400).json({ message: "Email and OTP are required" });
       return;
     }
 
-    const pendingUser = await prisma.pendingUser.findUnique({ where: { email } });
+    const pendingUser = await prisma.pendingUser.findUnique({
+      where: { email },
+    });
     if (!pendingUser) {
-      res.status(400).json({ message: "No pending signup found for this email" });
+      res
+        .status(400)
+        .json({ message: "No pending signup found for this email" });
       return;
     }
+
     if (pendingUser.otp !== otp) {
       res.status(400).json({ message: "Invalid OTP" });
       return;
     }
+
     if (pendingUser.otpExpires && new Date() > pendingUser.otpExpires) {
       res.status(400).json({ message: "OTP expired" });
       return;
     }
 
-    // 1) Create permanent user
+    // Create permanent User
     const user = await prisma.user.create({
       data: {
         email: pendingUser.email,
@@ -106,7 +118,7 @@ export async function verifyPendingSignup(req: Request, res: Response): Promise<
       },
     });
 
-    // 2) Remove pending record
+    // Remove pending record
     await prisma.pendingUser.delete({ where: { email } });
 
     res.status(200).json({
@@ -114,7 +126,8 @@ export async function verifyPendingSignup(req: Request, res: Response): Promise<
       userId: user.id,
     });
   } catch (err: any) {
-    res.status(500).json({ message: "Internal server error", error: err.message });
+    console.error(err);
+    res.status(500).json({ message: "Internal server error" });
   }
 }
 
@@ -123,7 +136,8 @@ export async function verifyPendingSignup(req: Request, res: Response): Promise<
  */
 export async function signin(req: Request, res: Response): Promise<void> {
   try {
-    const { email, password } = req.body;
+    const { email, password } = req.body as { email: string; password: string };
+
     if (!email || !password) {
       res.status(400).json({ message: "Email and password are required" });
       return;
@@ -137,15 +151,20 @@ export async function signin(req: Request, res: Response): Promise<void> {
 
     const passwordMatch = await bcrypt.compare(password, user.password);
     if (!passwordMatch) {
-      res.status(400).json({ message: "Invalid credentials" });
+      res.status(400).json({ message: "Invalid password" });
       return;
     }
 
     const token = jwt.sign({ userId: user.id, email: user.email }, JWT_SECRET, {
       expiresIn: "1h",
     });
-    res.status(200).json({ message: "Signin successful", token });
+
+    res.status(200).json({
+      message: "Signin successful",
+      token,
+    });
   } catch (err: any) {
-    res.status(500).json({ message: "Internal server error", error: err.message });
+    console.error(err);
+    res.status(500).json({ message: "Internal server error" });
   }
 }

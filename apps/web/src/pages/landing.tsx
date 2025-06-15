@@ -1,13 +1,30 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
-import { ChevronRight, Globe, Shield, Zap, Server, Activity, Network, GitMerge, Share2, Coins, Wallet, Lock, Blocks as Blockchain, Plus, Minus } from 'lucide-react';
+import {
+  ChevronRight,
+  Globe,
+  Shield,
+  Zap,
+  Server,
+  Activity,
+  Network,
+  GitMerge,
+  Share2,
+  Coins,
+  Wallet,
+  Lock,
+  Blocks as Blockchain,
+  Plus,
+  Minus
+} from 'lucide-react';
 import Header from '@/components/layout/header';
 import Footer from '@/components/layout/footer';
 import HeroAnimation from '@/components/animations/hero-animation';
-import NetworkAnimation from '@/components/animations/network-animation';
 import Stats from '@/components/landing/stats';
 import CryptoCard from '@/components/web3/crypto-card';
+import { motion } from 'framer-motion';
+import NetworkAnimation from '@/components/animations/network-animation';
 
 const LandingPage = () => {
   const [openFaq, setOpenFaq] = useState<number | null>(null);
@@ -39,61 +56,82 @@ const LandingPage = () => {
     }
   ];
 
+  const sectionVariants = {
+    hidden: { opacity: 0, y: 50 },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.8, ease: "easeOut" } },
+  };
+
+  const cardVariants = {
+    hidden: { opacity: 0, y: 20 },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" } },
+  };
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <Header />
       
       {/* Hero Section */}
-      <section className="py-20 px-4 md:px-6 lg:px-8 flex flex-col items-center">
+      <motion.section
+        className="py-20 px-4 md:px-6 lg:px-8 flex flex-col items-center"
+        initial="hidden"
+        animate="visible"
+        variants={sectionVariants}
+      >
         <div className="container max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
           <div className="space-y-6">
-            <div className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-sm font-semibold transition-colors focus:outline-none bg-muted">
+            <motion.div variants={cardVariants} className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-sm font-semibold transition-colors focus:outline-none bg-muted">
               <span className="text-primary">Coming Soon</span>
-            </div>
-            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight">
+            </motion.div>
+            <motion.h1 variants={cardVariants} className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight">
               Decentralized Website Monitoring Network
-            </h1>
-            <p className="text-lg md:text-xl text-muted-foreground">
+            </motion.h1>
+            <motion.p variants={cardVariants} className="text-lg md:text-xl text-muted-foreground">
               Join our consensus-driven network of distributed validators to monitor websites and earn crypto rewards.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4">
+            </motion.p>
+            <motion.div variants={cardVariants} className="flex flex-col sm:flex-row gap-4">
               <Button size="lg" asChild>
                 <Link to="/login">Get Started <ChevronRight size={16} className="ml-2" /></Link>
               </Button>
               <Button size="lg" variant="outline" asChild>
                 <Link to="#learn-more">Learn More</Link>
               </Button>
-            </div>
+            </motion.div>
           </div>
-          <div className="order-first lg:order-last">
+          <motion.div variants={cardVariants} className="order-first lg:order-last">
             <HeroAnimation />
-          </div>
+          </motion.div>
         </div>
 
         {/* Web3 Cards */}
-        <div className="container max-w-6xl mx-auto mt-20">
+        <motion.div
+          className="container max-w-6xl mx-auto mt-20"
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.3 }}
+          variants={{
+            visible: { transition: { staggerChildren: 0.1 } },
+          }}
+        >
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+            {/* Removed MotionCard wrappers */}
             <CryptoCard
               title="Token Rewards"
               description="Earn tokens for running validator nodes and participating in consensus"
               icon={<Coins className="h-8 w-8 text-primary" />}
               backContent="Validators earn rewards based on uptime, performance, and consensus participation"
             />
-            
             <CryptoCard
               title="Web3 Wallet"
               description="Connect your wallet to receive validator rewards"
               icon={<Wallet className="h-8 w-8 text-primary" />}
               backContent="Compatible with major Web3 wallets including MetaMask and WalletConnect"
             />
-            
             <CryptoCard
               title="Secure Staking"
               description="Stake tokens to become a validator"
               icon={<Lock className="h-8 w-8 text-primary" />}
               backContent="Staking mechanisms ensure validator reliability and network security"
             />
-            
             <CryptoCard
               title="On-chain Proofs"
               description="Consensus results stored on blockchain"
@@ -101,27 +139,45 @@ const LandingPage = () => {
               backContent="Immutable record of website monitoring results and validator performance"
             />
           </div>
-        </div>
-      </section>
+        </motion.div>
+      </motion.section>
 
       {/* Stats Section */}
-      <section className="py-12 bg-muted/50">
+      <motion.section
+        className="py-12 bg-muted/50"
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, amount: 0.3 }}
+        variants={sectionVariants}
+      >
         <div className="container mx-auto px-4 md:px-6">
-          <Stats />
+          <motion.div variants={cardVariants}><Stats /></motion.div>
         </div>
-      </section>
+      </motion.section>
 
       {/* Consensus Section */}
-      <section className="py-20 px-4 md:px-6 lg:px-8 bg-gradient-to-b from-background to-muted/20">
+      <motion.section
+        className="py-20 px-4 md:px-6 lg:px-8 bg-gradient-to-b from-background to-muted/20"
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, amount: 0.3 }}
+        variants={sectionVariants}
+      >
         <div className="container max-w-6xl mx-auto text-center mb-16">
-          <h2 className="text-3xl md:text-4xl font-bold mb-6">Powered by Advanced Consensus</h2>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+          <motion.h2 variants={cardVariants} className="text-3xl md:text-4xl font-bold mb-6">Powered by Advanced Consensus</motion.h2>
+          <motion.p variants={cardVariants} className="text-lg text-muted-foreground max-w-2xl mx-auto">
             Our network utilizes state-of-the-art consensus mechanisms to ensure reliable and accurate website monitoring.
-          </p>
+          </motion.p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 container max-w-6xl mx-auto">
-          <div className="bg-card p-6 rounded-lg shadow-sm border hover:shadow-md transition-shadow">
+        <motion.div
+          className="grid grid-cols-1 md:grid-cols-3 gap-8 container max-w-6xl mx-auto"
+          variants={{
+            visible: { transition: { staggerChildren: 0.1 } },
+          }}
+        >
+          {/* Replaced each MotionCard with a plain div */}
+          <div className="bg-card p-6 rounded-lg shadow-sm border transition-shadow">
             <div className="p-3 bg-primary/10 rounded-full w-12 h-12 flex items-center justify-center mb-4">
               <GitMerge className="h-6 w-6 text-primary" />
             </div>
@@ -145,7 +201,7 @@ const LandingPage = () => {
             </ul>
           </div>
 
-          <div className="bg-card p-6 rounded-lg shadow-sm border hover:shadow-md transition-shadow">
+          <div className="bg-card p-6 rounded-lg shadow-sm border transition-shadow">
             <div className="p-3 bg-primary/10 rounded-full w-12 h-12 flex items-center justify-center mb-4">
               <Share2 className="h-6 w-6 text-primary" />
             </div>
@@ -169,7 +225,7 @@ const LandingPage = () => {
             </ul>
           </div>
 
-          <div className="bg-card p-6 rounded-lg shadow-sm border hover:shadow-md transition-shadow">
+          <div className="bg-card p-6 rounded-lg shadow-sm border transition-shadow">
             <div className="p-3 bg-primary/10 rounded-full w-12 h-12 flex items-center justify-center mb-4">
               <Network className="h-6 w-6 text-primary" />
             </div>
@@ -192,21 +248,32 @@ const LandingPage = () => {
               </li>
             </ul>
           </div>
-        </div>
-      </section>
+        </motion.div>
+      </motion.section>
 
-      {/* Features Section */}
-      <section id="learn-more" className="py-20 px-4 md:px-6 lg:px-8">
-        <div className="container max-w-6xl mx-auto">
+      {/* Features Section - Reinstated */}
+      <motion.section
+        id="learn-more"
+        className="py-20 px-4 md:px-6 lg:px-8"
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, amount: 0.3 }}
+        variants={sectionVariants}
+      >
+        <div className="container max-w-6xl mx-auto">  
           <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold">How It Works</h2>
-            <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
+            <motion.h2 variants={cardVariants} className="text-3xl md:text-4xl font-bold">How It Works</motion.h2>
+            <motion.p variants={cardVariants} className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
               Our distributed validator network provides reliable website monitoring through consensus-driven validation
-            </p>
+            </motion.p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            <div className="bg-card p-6 rounded-lg shadow-sm border hover:shadow-md transition-shadow">
+          <motion.div
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
+            variants={{ visible: { transition: { staggerChildren: 0.1 } } }}
+          >
+            {/* Plain divs for feature cards */}
+            <div className="bg-card p-6 rounded-lg shadow-sm border transition-shadow">
               <div className="p-3 bg-primary/10 rounded-full w-12 h-12 flex items-center justify-center mb-4">
                 <Globe className="h-6 w-6 text-primary" />
               </div>
@@ -215,8 +282,7 @@ const LandingPage = () => {
                 Access validators from multiple geographic locations with consensus-based reporting
               </p>
             </div>
-
-            <div className="bg-card p-6 rounded-lg shadow-sm border hover:shadow-md transition-shadow">
+            <div className="bg-card p-6 rounded-lg shadow-sm border transition-shadow">
               <div className="p-3 bg-primary/10 rounded-full w-12 h-12 flex items-center justify-center mb-4">
                 <Shield className="h-6 w-6 text-primary" />
               </div>
@@ -225,8 +291,7 @@ const LandingPage = () => {
                 Trustless monitoring with Raft consensus and gossip protocols
               </p>
             </div>
-
-            <div className="bg-card p-6 rounded-lg shadow-sm border hover:shadow-md transition-shadow">
+            <div className="bg-card p-6 rounded-lg shadow-sm border transition-shadow">
               <div className="p-3 bg-primary/10 rounded-full w-12 h-12 flex items-center justify-center mb-4">
                 <Zap className="h-6 w-6 text-primary" />
               </div>
@@ -235,8 +300,7 @@ const LandingPage = () => {
                 Validators earn tokens by participating in the consensus network
               </p>
             </div>
-
-            <div className="bg-card p-6 rounded-lg shadow-sm border hover:shadow-md transition-shadow">
+            <div className="bg-card p-6 rounded-lg shadow-sm border transition-shadow">
               <div className="p-3 bg-primary/10 rounded-full w-12 h-12 flex items-center justify-center mb-4">
                 <Server className="h-6 w-6 text-primary" />
               </div>
@@ -245,140 +309,126 @@ const LandingPage = () => {
                 Join the P2P network as a consensus participant
               </p>
             </div>
-
-            <div className="bg-card p-6 rounded-lg shadow-sm border hover:shadow-md transition-shadow">
+            <div className="bg-card p-6 rounded-lg shadow-sm border transition-shadow">
               <div className="p-3 bg-primary/10 rounded-full w-12 h-12 flex items-center justify-center mb-4">
                 <Activity className="h-6 w-6 text-primary" />
               </div>
-              <h3 className="text-xl font-semibold mb-2">Real-time Monitoring</h3>
+              <h3 className="text-xl font-semibold mb-2">Uptime Monitoring</h3>
               <p className="text-muted-foreground">
-                Consensus-validated status updates and analytics
+                Real-time website uptime and performance monitoring across the globe
               </p>
             </div>
-
-            <div className="bg-card p-6 rounded-lg shadow-sm border hover:shadow-md transition-shadow relative overflow-hidden group">
-              <div className="absolute -right-4 -top-4 bg-primary text-white py-1 px-3 rotate-45 text-xs font-semibold">
-                Coming Soon
-              </div>
+            <div className="bg-card p-6 rounded-lg shadow-sm border transition-shadow">
               <div className="p-3 bg-primary/10 rounded-full w-12 h-12 flex items-center justify-center mb-4">
-                <svg className="h-6 w-6 text-primary" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M12 4L4 8L12 12L20 8L12 4Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"></path>
-                  <path d="M4 16L12 20L20 16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"></path>
-                  <path d="M4 12L12 16L20 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"></path>
-                </svg>
+                <Network className="h-6 w-6 text-primary" />
               </div>
-              <h3 className="text-xl font-semibold mb-2">Blockchain Integration</h3>
+              <h3 className="text-xl font-semibold mb-2">Data Accuracy</h3>
               <p className="text-muted-foreground">
-                On-chain consensus proofs and validator rewards
+                Consensus mechanisms ensure high data integrity and reliability
               </p>
             </div>
-          </div>
+          </motion.div>
         </div>
-      </section>
+      </motion.section>
 
-      {/* Network Section */}
-      <section className="py-20 px-4 md:px-6 lg:px-8 bg-muted/30">
-        <div className="container max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-          <div>
-            <NetworkAnimation />
-          </div>
-          <div className="space-y-6">
-            <h2 className="text-3xl md:text-4xl font-bold">Consensus-Driven Network</h2>
-            <p className="text-lg text-muted-foreground">
-              Our network of validators uses Raft consensus and gossip protocols to ensure accurate, decentralized website monitoring. Validators work together through peer-to-peer communication to maintain network consistency and reliability.
-            </p>
-            <ul className="space-y-2">
-              <li className="flex items-start gap-2">
-                <span className="text-primary mt-1">✓</span>
-                <span>Raft-based leader election and log replication</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-primary mt-1">✓</span>
-                <span>Gossip protocol for efficient data propagation</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-primary mt-1">✓</span>
-                <span>P2P mesh network architecture</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-primary mt-1">✓</span>
-                <span>Byzantine fault tolerance</span>
-              </li>
-            </ul>
-            <Button size="lg" asChild>
-              <Link to="/login?type=client">Monitor Your Website</Link>
-            </Button>
-          </div>
+      {/* Network Animation Section */}
+      <motion.section
+        className="py-20 px-4 md:px-6 lg:px-8 bg-background"
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, amount: 0.3 }}
+        variants={sectionVariants}
+      >
+        <div className="container max-w-6xl mx-auto text-center mb-16">
+          <motion.h2 variants={cardVariants} className="text-3xl md:text-4xl font-bold mb-6">Our Distributed Network</motion.h2>
+          <motion.p variants={cardVariants} className="text-lg text-muted-foreground max-w-2xl mx-auto">
+            Visualize the real-time activity and health of our decentralized validator network.
+          </motion.p>
         </div>
+        <motion.div variants={cardVariants} className="container max-w-6xl mx-auto">
+          <NetworkAnimation />
+        </motion.div>
+      </motion.section>
+
+      {/* CTA Section */}
+      <section className="py-20 px-4 md:px-6 lg:px-8 text-center bg-primary text-primary-foreground">
+        <motion.div
+          className="container max-w-4xl mx-auto"
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.3 }}
+          variants={sectionVariants}
+        >
+          <motion.h2 variants={cardVariants} className="text-3xl md:text-4xl font-bold mb-4">
+            Join the DeepFry Network
+          </motion.h2>
+          <motion.p variants={cardVariants} className="text-lg mb-8 opacity-90">
+            Be part of the decentralized future of website monitoring. Run a validator node, contribute to a more reliable internet, and earn rewards.
+          </motion.p>
+          <motion.div variants={cardVariants}>
+            <Button size="lg" variant="secondary" asChild>
+              <Link to="/signup">Sign Up Now <ChevronRight size={16} className="ml-2" /></Link>
+            </Button>
+          </motion.div>
+        </motion.div>
       </section>
 
       {/* FAQ Section */}
-      <section className="py-20 px-4 md:px-6 lg:px-8 bg-muted/30">
+      <motion.section
+        className="py-20 px-4 md:px-6 lg:px-8"
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, amount: 0.3 }}
+        variants={sectionVariants}
+      >
         <div className="container max-w-4xl mx-auto">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold mb-4">Frequently Asked Questions</h2>
-            <p className="text-lg text-muted-foreground">
-              Everything you need to know about our distributed validator network
-            </p>
+          <div className="text-center mb-16">
+            <motion.h2 variants={cardVariants} className="text-3xl md:text-4xl font-bold">
+              Frequently Asked Questions
+            </motion.h2>
+            <motion.p variants={cardVariants} className="mt-4 text-lg text-muted-foreground">
+              Find answers to common questions about DeepFry.
+            </motion.p>
           </div>
-
-          <div className="space-y-4">
+          <motion.div
+            className="space-y-4"
+            variants={{ visible: { transition: { staggerChildren: 0.05 } } }}
+          >
             {faqs.map((faq, index) => (
-              <div
-                key={index}
-                className="border rounded-lg bg-card transition-all duration-200 hover:shadow-md"
-              >
+              <div key={index} className="border rounded-lg bg-card shadow-sm">
                 <button
-                  className="w-full px-6 py-4 flex items-center justify-between text-left"
+                  className="flex justify-between items-center w-full p-6 text-lg font-semibold focus:outline-none"
                   onClick={() => setOpenFaq(openFaq === index ? null : index)}
                 >
-                  <span className="font-medium">{faq.question}</span>
-                  {openFaq === index ? (
-                    <Minus className="h-4 w-4 text-primary shrink-0" />
-                  ) : (
-                    <Plus className="h-4 w-4 text-primary shrink-0" />
-                  )}
+                  {faq.question}
+                  {openFaq === index ? <Minus size={20} /> : <Plus size={20} />}
                 </button>
-                <div
-                  className={`px-6 overflow-hidden transition-all duration-200 ease-in-out ${
-                    openFaq === index ? 'max-h-48 pb-4' : 'max-h-0'
-                  }`}
-                >
-                  <p className="text-muted-foreground">{faq.answer}</p>
-                </div>
+                {openFaq === index && (
+                  <motion.div
+                    layout
+                    initial={{ opacity: 0, scaleY: 0 }}
+                    animate={{ opacity: 1, scaleY: 1 }}
+                    exit={{ opacity: 0, scaleY: 0 }}
+                    transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+                    style={{ transformOrigin: "top", overflow: "hidden" }}
+                    className="p-6 pt-0 text-muted-foreground"
+                  >
+                    <motion.p
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.2, delay: 0.1 }}
+                    >
+                      {faq.answer}
+                    </motion.p>
+                  </motion.div>
+                )}
               </div>
             ))}
-          </div>
-
-          <div className="mt-12 text-center">
-            <p className="text-muted-foreground mb-6">
-              Still have questions? We're here to help.
-            </p>
-            <Button size="lg" variant="outline" asChild>
-              <Link to="/contact">Contact Support</Link>
-            </Button>
-          </div>
+          </motion.div>
         </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="py-20 px-4 md:px-6 lg:px-8 bg-primary text-primary-foreground">
-        <div className="container max-w-6xl mx-auto text-center">
-          <h2 className="text-3xl md:text-4xl font-bold mb-6">Join our consensus network</h2>
-          <p className="text-lg mb-8 max-w-2xl mx-auto opacity-90">
-            Become part of our distributed validator network and help build a more reliable web monitoring system.
-          </p>
-          <div className="flex flex-col sm:flex-row justify-center gap-4">
-            <Button size="lg" variant="secondary" asChild>
-              <Link to="/login?type=validator">Become a Validator</Link>
-            </Button>
-            <Button size="lg" variant="outline" className="bg-transparent" asChild>
-              <Link to="/login?type=client">Monitor Your Website</Link>
-            </Button>
-          </div>
-        </div>
-      </section>
-
+      </motion.section>
+      
       <Footer />
     </div>
   );

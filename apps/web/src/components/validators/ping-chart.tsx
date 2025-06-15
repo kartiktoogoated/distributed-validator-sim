@@ -16,6 +16,8 @@ interface LogEntry {
   timestamp: string
   latency: number
   site?: string
+  validatorId?: string
+  location?: string
 }
 
 interface MinuteBucket {
@@ -23,10 +25,9 @@ interface MinuteBucket {
   pingTime: number | null
   isDown?: boolean
   site?: string
+  validatorId?: string
+  location?: string
 }
-
-let historyCache: LogEntry[] | null = null
-let historyCacheTime = 0
 
 const formatLabel = (iso: string) => {
   const d = new Date(iso)
@@ -95,90 +96,113 @@ const CustomTooltip = ({
 
 export interface PingChartProps {
   isStarted: boolean
+  validatorId: number | null
 }
 
-const PingChart: React.FC<PingChartProps> = ({ isStarted }) => {
+const PingChart: React.FC<PingChartProps> = ({ isStarted, validatorId }) => {
   const [data, setData] = useState<MinuteBucket[]>([])
   const wsRef = useRef<WebSocket>()
+  const historyCacheRef = useRef<{logs: LogEntry[], time: number} | null>(null)
 
   // 1) initial load once:
   useEffect(() => {
     const loadHistory = async () => {
-      const now = Date.now()
-      if (historyCache && now - historyCacheTime < 5_000) {
-        const slice = historyCache
-          .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+      if (!validatorId) return;
+      const now = Date.now();
+      if (historyCacheRef.current && now - historyCacheRef.current.time < 5_000) {
+        const slice = historyCacheRef.current.logs
+          .sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
           .slice(-60)
-          .map((log) => ({
+          .map((log: any) => ({
             formattedTime: formatLabel(log.timestamp),
             pingTime: log.latency === 0 ? null : log.latency,
             isDown: log.latency === 0,
-            site: (log as any).site,
+            site: log.site,
+            validatorId: log.validatorId,
           }))
         setData(slice)
         return
       }
       try {
-        const res = await fetch('/api/logs?validatorId=0');
-        if (res.status === 429) return
-        const json = await res.json()
-        if (json.success && Array.isArray(json.logs)) {
-          historyCache = json.logs
-          historyCacheTime = now
-          const slice = (json.logs as any[])
-            .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-            .slice(-60)
-            .map((log) => ({
-              formattedTime: formatLabel(log.timestamp),
-              pingTime: log.latency === 0 ? null : log.latency,
-              isDown: log.latency === 0,
-              site: log.site,
-            }))
-          setData(slice)
-        }
+        const res = await fetch(`/api/logs?validatorId=${validatorId}`);
+        if (res.status === 429) return;
+        const data = await res.json();
+        const allLogs = data.success ? data.logs : [];
+        historyCacheRef.current = { logs: allLogs, time: now };
+        // Deduplicate logs
+        const seen = new Set<string>();
+        const uniqueLogs = allLogs.filter((log: any) => {
+          if (log.validatorId === 0) return false;
+          const key = `${log.site}-${log.timestamp}-${log.validatorId}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        const slice = uniqueLogs
+          .sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+          .slice(-60)
+          .map((log: any) => ({
+            formattedTime: formatLabel(log.timestamp),
+            pingTime: log.latency === 0 ? null : log.latency,
+            isDown: log.latency === 0,
+            site: log.site,
+            validatorId: log.validatorId,
+          }))
+        setData(slice)
       } catch (e) {
         console.error('Failed to load logs for chart', e)
       }
     }
 
     loadHistory()
-  }, [])
+  }, [validatorId])
 
   // 2) polling only when started
   useEffect(() => {
-    if (!isStarted) return
-    const id = setInterval(() => {
-      fetch('/api/logs')
-        .then((r) => (r.status === 429 ? null : r.json()))
-        .then((json: any) => {
-          if (json?.success && Array.isArray(json.logs)) {
-            historyCache = json.logs
-            historyCacheTime = Date.now()
-            const slice = (json.logs as any[])
-              .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
-              .slice(-60)
-              .map((log) => ({
-                formattedTime: formatLabel(log.timestamp),
-                pingTime: log.latency === 0 ? null : log.latency,
-                isDown: log.latency === 0,
-                site: log.site,
-              }))
-            setData(slice)
-          }
-        })
-        .catch(() => {})
-    }, 30_000)
-    return () => clearInterval(id)
-  }, [isStarted])
+    if (!isStarted || !validatorId) return;
+    const id = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/logs?validatorId=${validatorId}`);
+        if (res.status === 429) return;
+        const data = await res.json();
+        const allLogs = data.success ? data.logs : [];
+        historyCacheRef.current = { logs: allLogs, time: Date.now() };
+        // Deduplicate logs
+        const seen = new Set<string>();
+        const uniqueLogs = allLogs.filter((log: any) => {
+          if (log.validatorId === 0) return false;
+          const key = `${log.site}-${log.timestamp}-${log.validatorId}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        const slice = uniqueLogs
+          .sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
+          .slice(-60)
+          .map((log: any) => ({
+            formattedTime: formatLabel(log.timestamp),
+            pingTime: log.latency === 0 ? null : log.latency,
+            isDown: log.latency === 0,
+            site: log.site,
+            validatorId: log.validatorId,
+          }))
+        setData(slice)
+      } catch (e) {
+        console.error('Failed to load logs', e)
+      }
+    }, 30_000);
+    return () => clearInterval(id);
+  }, [isStarted, validatorId])
 
   // 3) websocket only updates UI when started
   useEffect(() => {
+    if (!isStarted) return;
+    
     const proto = window.location.protocol === 'https:' ? 'wss' : 'ws'
     const socket = new WebSocket(`${proto}://${window.location.host}/api/ws`)
     wsRef.current = socket
 
     socket.onmessage = (ev) => {
-      if (!isStarted) return
       try {
         const msg = JSON.parse(ev.data) as {
           timeStamp: string
@@ -203,7 +227,10 @@ const PingChart: React.FC<PingChartProps> = ({ isStarted }) => {
     }
 
     return () => {
-      socket.close()
+      if (wsRef.current) {
+        wsRef.current.close()
+        wsRef.current = undefined
+      }
     }
   }, [isStarted])
 
