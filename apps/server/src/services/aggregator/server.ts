@@ -25,15 +25,15 @@ const PORT = Number(process.env.PORT) || 3000;
 
 // Initialize S3 client
 const s3Client = new S3Client({
-  region: process.env.***REMOVED***
+  region: process.env.AWS_REGION,
   credentials: {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.SECRET_ACCESS_KEY!,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
   },
 });
 
 // Create logs directory if it doesn't exist
-const LOGS_DIR = path.join(process.cwd(), "logs");
+const LOGS_DIR = process.env.LOG_DIR || path.join(process.cwd(), "logs");
 if (!fs.existsSync(LOGS_DIR)) {
   fs.mkdirSync(LOGS_DIR, { recursive: true });
 }
@@ -94,11 +94,11 @@ async function rotateLogs() {
       const oldestFile = files[files.length - 1];
       const filePath = path.join(LOGS_DIR, oldestFile);
 
-      if (process.env.AWS_BUCKET_NAME) {
+      if (process.env.S3_BUCKET) {
         await s3Client.send(
           new PutObjectCommand({
-            Bucket: process.env.AWS_BUCKET_NAME,
-            Key: `logs/${oldestFile}`,
+            Bucket: process.env.S3_BUCKET,
+            Key: `${process.env.S3_PREFIX || 'logs'}/${oldestFile}`,
             Body: fs.readFileSync(filePath),
             ContentType: "application/json",
           })
@@ -141,8 +141,8 @@ const voteLatencyHistogram = new Histogram({
 const processedConsensus = new Set<string>();
 
 // Kafka topics
-const VOTES_TOPIC = "validator-votes";
-const CONSENSUS_TOPIC = "validator-consensus";
+const VOTES_TOPIC = process.env.KAFKA_TOPIC || "validator-logs";
+const CONSENSUS_TOPIC = process.env.KAFKA_CONSENSUS_TOPIC || "validator-consensus";
 
 // Initialize Kafka producer
 const kafka = new Kafka({
@@ -291,11 +291,11 @@ async function startServer() {
         }
 
         // Get logs from S3 if needed
-        if (process.env.AWS_BUCKET_NAME) {
+        if (process.env.S3_BUCKET) {
           const s3Files = await s3Client.send(
             new GetObjectCommand({
-              Bucket: process.env.AWS_BUCKET_NAME,
-              Key: `logs/validator-logs-${start.toISOString().split("T")[0]}.json`,
+              Bucket: process.env.S3_BUCKET,
+              Key: `${process.env.S3_PREFIX || 'logs'}/validator-logs-${start.toISOString().split("T")[0]}.json`,
             })
           );
 

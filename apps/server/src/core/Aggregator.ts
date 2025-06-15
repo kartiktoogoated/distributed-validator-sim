@@ -68,7 +68,9 @@ const QUORUM = Math.ceil(VALIDATOR_IDS.length / 2);
 const AGG_INTERVAL = Number(process.env.PING_INTERVAL_MS) || 10_000;
 
 // KAFKA TOPIC
-const KAFKA_TOPIC = process.env.KAFKA_TOPIC;
+const KAFKA_TOPIC = process.env.KAFKA_TOPIC || "validator-logs";
+const KAFKA_CONSENSUS_TOPIC = process.env.KAFKA_CONSENSUS_TOPIC || "validator-consensus";
+
 if (!KAFKA_TOPIC) {
   throw new AppError(`KAFKA_TOPIC must be defined`, 500);
 }
@@ -144,8 +146,8 @@ async function startKafkaConsumer() {
   await consumer.connect();
   info('Aggregator connected to Kafka');
 
-  await consumer.subscribe({ topic: 'validator-logs', fromBeginning: false });
-  info('Subscribed to validator-logs topic');
+  await consumer.subscribe({ topic: KAFKA_TOPIC, fromBeginning: false });
+  info(`Subscribed to ${KAFKA_TOPIC} topic`);
 
   await consumer.run({
     eachMessage: async ({ message }) => {
@@ -298,7 +300,7 @@ async function processQuorum() {
 
     // c) Publish to Kafka
     try {
-      await sendToTopic(KAFKA_TOPIC!, payload);
+      await sendToTopic(KAFKA_CONSENSUS_TOPIC, payload);
     } catch (e) {
       logError(`Kafka publish failed: ${(e as Error).message}`);
     }
@@ -332,17 +334,6 @@ async function processQuorum() {
   }
 }
 
-// ── SERVER START ────────────────────────────────────────────────────────────
 server.listen(SERVER_PORT, () => {
-  info(`🔌 Aggregator listening on port ${SERVER_PORT}`);
+  info(`Aggregator server is running on port ${SERVER_PORT}`);
 });
-
-// Regular cleanup of old votes
-setInterval(cleanupOldVotes, 60 * 1000); // Run cleanup every minute
-
-// Regular quorum processing
-setInterval(() => {
-  processQuorum().catch((e) =>
-    logError(`processQuorum crashed: ${(e as Error).message}`)
-  );
-}, AGG_INTERVAL);
