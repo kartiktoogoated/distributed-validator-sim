@@ -38,7 +38,7 @@ export default function UptimeChart({ siteId, siteUrl }: UptimeChartProps) {
   useEffect(() => {
     const fetchHistory = async () => {
       const res = await fetch(`/api/websites/${siteId}/history?limit=1000`, {
-        headers: { Authorization: `Bearer REDACTED_TOKEN` },
+        headers: { Authorization: `Bearer ${token}` },
       })
       if (!res.ok) return
       const json = await res.json()

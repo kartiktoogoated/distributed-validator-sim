@@ -111,7 +111,7 @@ export default function ResponseTimeChart({ siteId, siteUrl }: Props) {
 
     const res = await fetch(
       `/api/websites/${siteId}/history?limit=60`,
-      { headers: { Authorization: `Bearer REDACTED_TOKEN` } }
+      { headers: { Authorization: `Bearer ${token}` } }
     )
     if (!res.ok) return
     const json = await res.json() as { logs: HistoryLog[] }
