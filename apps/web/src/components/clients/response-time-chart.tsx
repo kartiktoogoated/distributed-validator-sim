@@ -17,6 +17,7 @@ interface HistoryLog {
   timestamp: string
   status: 'UP' | 'DOWN'
   url: string
+  validatorId?: number
 }
 
 interface MinuteBucket {
@@ -119,12 +120,18 @@ export default function ResponseTimeChart({ siteId, siteUrl }: Props) {
     historyCacheTime[siteId] = now
 
     const slice = json.logs
+      .filter(log =>
+        log.status === 'UP' &&
+        typeof log.latency === 'number' &&
+        log.latency > 0 &&
+        log.validatorId !== 0
+      )
       .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
       .slice(-60)
       .map(log => ({
         formattedTime: formatLabel(log.timestamp),
-        latency: log.status === 'UP' ? log.latency : null,
-        isDown: log.status === 'DOWN',
+        latency: log.latency,
+        isDown: false,
       }))
     setData(slice)
   }
