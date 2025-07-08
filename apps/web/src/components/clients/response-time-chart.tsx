@@ -1,5 +1,5 @@
 /* eslint-disable react-hooks/exhaustive-deps */
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   AreaChart,
   Area,
@@ -90,7 +90,7 @@ interface Props {
 export default function ResponseTimeChart({ siteId, siteUrl }: Props) {
   const [data, setData] = useState<MinuteBucket[]>([])
   const wsRef = useRef<WebSocket | null>(null)
-  const token = useMemo(() => localStorage.getItem('token')!, [])
+  // const token = useMemo(() => localStorage.getItem('token')!, [])
 
   async function loadHistory() {
     const now = Date.now()
@@ -112,7 +112,7 @@ export default function ResponseTimeChart({ siteId, siteUrl }: Props) {
 
     const res = await fetch(
       `/api/websites/${siteId}/history?limit=60`,
-      { headers: { Authorization: `Bearer ${token}` } }
+      { credentials: 'include' }
     )
     if (!res.ok) return
     const json = await res.json() as { logs: HistoryLog[] }
